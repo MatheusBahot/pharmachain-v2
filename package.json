@@ -1,0 +1,17 @@
+{
+  "name": "pharmachain",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": ["backend", "contracts"],
+  "scripts": {
+    "dev": "npm run dev --workspace=backend",
+    "compile": "npm run compile --workspace=contracts",
+    "test:contracts": "npm run test --workspace=contracts",
+    "migrate": "npm run migrate --workspace=backend",
+    "deploy:local": "npm run deploy:local --workspace=contracts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
+

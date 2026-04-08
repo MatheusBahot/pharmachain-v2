@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Participantes da rede ──────────────────────────────────────────────
+model Participant {
+  id             String         @id @default(uuid())
+  address        String         @unique
+  cnpj           String         @unique
+  name           String
+  role           Role
+  passwordHash   String
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  batches        DrugBatch[]
+  sentTransfers  Transfer[]     @relation("sender")
+  recvTransfers  Transfer[]     @relation("receiver")
+  prescriptions  Prescription[] @relation("doctor")
+  dispensations  Prescription[] @relation("pharmacy")
+}
+
+// ── Lotes de medicamentos ─────────────────────────────────────────────
+model DrugBatch {
+  id             String         @id @default(uuid())
+  gtin           String
+  lot            String
+  productName    String
+  expiryDate     DateTime
+  quantity       Int
+  unitPrice      Decimal        @db.Decimal(10,2)
+  manufacturerId String
+  manufacturer   Participant    @relation(fields:[manufacturerId], references:[id])
+  status         BatchStatus    @default(ACTIVE)
+  dataHash       String
+  txHash         String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  transfers      Transfer[]
+  tempLogs       TempLog[]
+  prescriptions  Prescription[]
+}
+
+// ── Transferências ────────────────────────────────────────────────────
+model Transfer {
+  id        String       @id @default(uuid())
+  batchId   String
+  batch     DrugBatch    @relation(fields:[batchId], references:[id])
+  fromId    String
+  from      Participant  @relation("sender",   fields:[fromId], references:[id])
+  toId      String
+  to        Participant  @relation("receiver", fields:[toId],   references:[id])
+  quantity  Int
+  type      TransferType
+  nfeKey    String?
+  nfeHash   String?
+  signature String
+  txHash    String?
+  createdAt DateTime     @default(now())
+}
+
+// ── Receitas médicas ─────────────────────────────────────────────────
+model Prescription {
+  id            String       @id @default(uuid())
+  doctorId      String
+  doctor        Participant  @relation("doctor",   fields:[doctorId],   references:[id])
+  pharmacyId    String?
+  pharmacy      Participant? @relation("pharmacy", fields:[pharmacyId], references:[id])
+  batchId       String
+  batch         DrugBatch    @relation(fields:[batchId], references:[id])
+  patientHash   String
+  encryptedData String
+  dosage        String
+  quantity      Int
+  expiresAt     DateTime
+  dispensedAt   DateTime?
+  signature     String
+  txHash        String?
+  createdAt     DateTime     @default(now())
+}
+
+// ── Logs de temperatura (IoT) ─────────────────────────────────────────
+model TempLog {
+  id             String    @id @default(uuid())
+  batchId        String
+  batch          DrugBatch @relation(fields:[batchId], references:[id])
+  temperature    Float
+  humidity       Float?
+  deviceId       String
+  alertTriggered Boolean   @default(false)
+  txHash         String?
+  timestamp      DateTime  @default(now())
+}
+
+enum Role {
+  MANUFACTURER
+  DISTRIBUTOR
+  PHARMACY
+  DOCTOR
+  AUDITOR
+  ADMIN
+}
+
+enum BatchStatus {
+  ACTIVE
+  RECALLED
+  EXPIRED
+  DISPENSED
+}
+
+enum TransferType {
+  MANUFACTURE
+  DISTRIBUTE
+  RECEIVE
+  DISPENSE
+  RETURN
+}

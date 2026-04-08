@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.env.local
+backend/prisma/migrations/*.sql.shadow
+contracts/artifacts/
+contracts/cache/
+contracts/node_modules/
+*.log
+
