@@ -1,8 +1,33 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { authenticate, requireRole }  from "../middlewares/auth";
-import { prescriptionService }         from "../../application/PrescriptionService";
+import { authenticate, requireRole } from "../middlewares/auth";
+import { prescriptionService }        from "../../application/PrescriptionService";
+import { prisma }                     from "../../storage/prisma";
+
 export const prescriptionRouter = Router();
+
+// GET /api/v1/prescriptions — listar receitas (filtrado por role)
+prescriptionRouter.get("/", authenticate, async (req: Request, res: Response) => {
+  const { participantId, role } = req.participant!;
+
+  const where: any = {};
+  if (role === "DOCTOR")   where.doctorId  = participantId;
+  if (role === "PHARMACY") where.pharmacyId = participantId;
+  // ADMIN e AUDITOR veem tudo
+
+  const rxList = await prisma.prescription.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: {
+      doctor:  { select: { name:true, cnpj:true } },
+      pharmacy:{ select: { name:true } },
+      batch:   { select: { productName:true, gtin:true, lot:true, expiryDate:true } },
+    }
+  });
+
+  res.json(rxList);
+});
 
 // POST /api/v1/prescriptions — Médico emite receita
 prescriptionRouter.post("/",
@@ -10,12 +35,12 @@ prescriptionRouter.post("/",
   requireRole("DOCTOR"),
   async (req: Request, res: Response) => {
     const schema = z.object({
-      patientCpf: z.string().length(11),
+      patientCpf: z.string().min(11).max(11),
       batchId:    z.string().uuid(),
       dosage:     z.string().min(1),
       quantity:   z.number().int().positive(),
       expiresAt:  z.string().datetime(),
-      signature:  z.string().min(10),
+      signature:  z.string().min(5),
     });
     const parse = schema.safeParse(req.body);
     if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return; }
