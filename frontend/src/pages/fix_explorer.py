@@ -1,4 +1,6 @@
-import { useState, useRef } from "react";
+import os
+
+content = """import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ExternalLink, QrCode, MapPin, Wifi, X, Filter } from "lucide-react";
@@ -329,3 +331,9 @@ export default function Explorer() {
     </div>
   );
 }
+"""
+
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Explorer.tsx")
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+print("OK — Explorer.tsx escrito em:", path)
