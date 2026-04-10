@@ -1,5 +1,4 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
   LayoutDashboard, Package, FileText, Warehouse,
   Activity, Users, LogOut, Wifi, Info
@@ -8,7 +7,7 @@ import { useAuthStore } from "../store/auth";
 
 const NAV = [
   { to:"/about",         icon:Info,            label:"PharmaChain"  },
-  { to:"/dashboard",     icon:LayoutDashboard, label:"Dashboard"    },
+  { to:"/",              icon:LayoutDashboard, label:"Dashboard"    },
   { to:"/batches",       icon:Package,         label:"Lotes"        },
   { to:"/inventory",     icon:Warehouse,       label:"Estoque"      },
   { to:"/prescriptions", icon:FileText,        label:"Receitas"     },
@@ -22,22 +21,21 @@ export default function Layout() {
   function handleLogout() { logout(); navigate("/login"); }
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh",
-      background:"#F0FAF4", fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+    <div style={{
+      display:"flex", flexDirection:"column", minHeight:"100vh",
+      background:"#F0FAF4", fontFamily:"'Plus Jakarta Sans',sans-serif"
+    }}>
 
       {/* ── Top Navbar ── */}
-      <motion.header
-        initial={{ y:-40, opacity:0 }} animate={{ y:0, opacity:1 }}
-        transition={{ duration:0.4 }}
-        style={{
-          position:"sticky", top:0, zIndex:100,
-          background:"rgba(255,255,255,0.95)", backdropFilter:"blur(16px)",
-          borderBottom:"1px solid rgba(22,163,74,0.12)",
-          boxShadow:"0 2px 20px rgba(22,163,74,0.06)",
-          display:"flex", alignItems:"center",
-          padding:"0 28px", height:60, gap:8
-        }}
-      >
+      <header style={{
+        position:"sticky", top:0, zIndex:100,
+        background:"rgba(255,255,255,0.95)", backdropFilter:"blur(16px)",
+        borderBottom:"1px solid rgba(22,163,74,0.12)",
+        boxShadow:"0 2px 20px rgba(22,163,74,0.06)",
+        display:"flex", alignItems:"center",
+        padding:"0 28px", height:60, gap:8
+      }}>
+
         {/* Logo */}
         <div style={{ display:"flex", alignItems:"center", gap:9, marginRight:20 }}>
           <div style={{
@@ -54,7 +52,7 @@ export default function Layout() {
         {/* Nav links */}
         <div style={{ display:"flex", alignItems:"center", gap:2, flex:1 }}>
           {NAV.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} style={({ isActive }) => ({
+            <NavLink key={to} to={to} end={to==="/"} style={({ isActive }) => ({
               display:"flex", alignItems:"center", gap:6,
               padding:"6px 11px", borderRadius:8, fontSize:13,
               color: isActive ? "#16A34A" : "#4B6B58",
@@ -67,24 +65,31 @@ export default function Layout() {
           ))}
         </div>
 
-        {/* Right */}
+        {/* Right side */}
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6,
-            background:"#DCFCE7", padding:"4px 12px", borderRadius:20 }}>
+          <div style={{
+            display:"flex", alignItems:"center", gap:6,
+            background:"#DCFCE7", padding:"4px 12px", borderRadius:20
+          }}>
             <Wifi size={12} color="#16A34A"/>
             <span style={{ fontSize:11, color:"#16A34A", fontWeight:600 }}>Polygon Amoy</span>
           </div>
-          <span style={{ background:"#F0FAF4", color:"#16A34A", border:"1px solid rgba(22,163,74,0.2)",
-            fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20 }}>{role}</span>
+          <span style={{
+            background:"#F0FAF4", color:"#16A34A",
+            border:"1px solid rgba(22,163,74,0.2)",
+            fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20
+          }}>{role}</span>
           <button onClick={handleLogout} style={{
-            display:"flex", alignItems:"center", gap:6, border:"1px solid rgba(22,163,74,0.15)",
-            background:"white", cursor:"pointer", color:"#4B6B58", fontSize:13,
-            borderRadius:8, padding:"6px 10px", fontFamily:"inherit"
+            display:"flex", alignItems:"center", gap:6,
+            border:"1px solid rgba(22,163,74,0.15)",
+            background:"white", cursor:"pointer", color:"#4B6B58",
+            fontSize:13, borderRadius:8, padding:"6px 10px", fontFamily:"inherit"
           }}>
             <LogOut size={14}/> Sair
           </button>
         </div>
-      </motion.header>
+
+      </header>
 
       {/* ── Main ── */}
       <main style={{ flex:1, padding:"36px 40px", background:"#F0FAF4" }}>
@@ -92,13 +97,16 @@ export default function Layout() {
       </main>
 
       {/* ── Footer ── */}
-      <footer style={{ background:"#020F07", borderTop:"1px solid rgba(22,163,74,0.1)",
-        padding:"16px 40px", textAlign:"center" }}>
+      <footer style={{
+        background:"#020F07", borderTop:"1px solid rgba(22,163,74,0.1)",
+        padding:"16px 40px", textAlign:"center"
+      }}>
         <p style={{ color:"#374151", fontSize:12 }}>
           Copyright © 2026 PharmaChain. Todos os direitos reservados.
           Matheus Augusto Roseira Santana · Salvador, Bahia.
         </p>
       </footer>
+
     </div>
   );
 }

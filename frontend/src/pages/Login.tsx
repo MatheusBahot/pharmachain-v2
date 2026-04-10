@@ -1,628 +1,368 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useAuthStore } from "../store/auth";
-import { Camera, QrCode, X, CheckCircle, MapPin, Truck, Package, Building2, Wifi, ExternalLink } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import jsQR from "jsqr";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────
-interface TrackStep {
-  type: string; date: string; from: string; to: string;
-  qty: number; txHash: string; conditions?: { temp?: number; humidity?: number };
-}
-interface TrackResult {
-  productName: string; gtin: string; lot: string;
-  status: string; expiryDate: string; manufacturer: string;
-  steps: TrackStep[];
-  dispensedTo?: string; // CPF hash parcial para confirmação
-}
-
-const STEP_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  MANUFACTURE: { label: "Fabricação",    color: "#8b5cf6", icon: Package   },
-  DISTRIBUTE:  { label: "Distribuição",  color: "#3b82f6", icon: Truck     },
-  RECEIVE:     { label: "Recebimento",   color: "#10b981", icon: Building2 },
-  DISPENSE:    { label: "Dispensação",   color: "#f59e0b", icon: CheckCircle },
-  RETURN:      { label: "Devolução",     color: "#ef4444", icon: Package   },
-};
+const IMGS = [
+  { url:"https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=420&q=80", label:"Rastreabilidade de ponta a ponta" },
+  { url:"https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=420&q=80", label:"Cadeia do frio monitorada" },
+  { url:"https://images.unsplash.com/photo-1576671081837-49000212a370?w=420&q=80", label:"Conformidade ANVISA" },
+  { url:"https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=420&q=80",   label:"Blockchain farmacêutico" },
+];
 
 export default function Login() {
-  // ── Auth ──────────────────────────────────────────────────────────────────
   const [cnpj, setCnpj]         = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading]   = useState(false);
-  const [activeTab, setTab]     = useState<"empresa"|"consumidor">("empresa");
   const navigate = useNavigate();
   const login    = useAuthStore(s => s.login);
 
-  // ── Consumer tracking ─────────────────────────────────────────────────────
-  const [showScanner, setScanner]   = useState(false);
-  const [scanStep, setScanStep]     = useState<"camera"|"result">("camera");
-  const [trackResult, setTrack]     = useState<TrackResult|null>(null);
-  const [gps, setGps]               = useState<{ lat:number; lng:number }|null>(null);
-  const [scanning, setScanning]     = useState(false);
-  const [detected, setDetected]     = useState(false);
-  const [camError, setCamError]     = useState("");
-  const [cpfInput, setCpfInput]     = useState("");
-
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream|null>(null);
-  const rafRef    = useRef<number>(0);
-
-  // Modal Termos/Privacidade
-  const [showModal, setModal]   = useState(false);
-  const [modalType, setMType]   = useState<"termos"|"privacidade"|"contato">("termos");
-
-  const modalContent: Record<string, { title: string; body: string }> = {
-    termos:      { title:"Termos de Uso",         body:"O uso da plataforma PharmaChain implica na aceitação integral destes termos. Destinada exclusivamente a participantes autorizados da cadeia farmacêutica. Vedado o compartilhamento de credenciais. Todos os registros são imutáveis e rastreáveis. Violações implicam sanções conforme a Lei nº 6.360/76 e RDC ANVISA vigentes." },
-    privacidade: { title:"Política de Privacidade", body:"Dados pessoais tratados conforme a LGPD (Lei nº 13.709/2018). CPFs armazenados apenas como hash SHA-256. Não compartilhamos dados sem autorização. O titular pode solicitar acesso, correção ou exclusão via nossos canais." },
-    contato:     { title:"Fale Conosco",           body:"suporte@pharmachain.com.br\n(71) 3000-0000\nSegunda a Sexta, 8h às 18h\n\nCompliance: compliance@pharmachain.com.br\n\nAv. Tancredo Neves, 1632 — Salvador, Bahia" },
-  };
-
-  // ── GPS ───────────────────────────────────────────────────────────────────
-  function getGps() {
-    navigator.geolocation?.getCurrentPosition(
-      pos => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {}
-    );
-  }
-
-  // ── Camera ────────────────────────────────────────────────────────────────
-  const stopCamera = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-  }, []);
-
-  const scanFrame = useCallback(() => {
-    const v = videoRef.current; const c = canvasRef.current;
-    if (!v || !c || v.readyState < 2) { rafRef.current = requestAnimationFrame(scanFrame); return; }
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    const ctx = c.getContext("2d")!;
-    ctx.drawImage(v, 0, 0);
-    const img  = ctx.getImageData(0, 0, c.width, c.height);
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts:"dontInvert" });
-    if (code?.data) { setDetected(true); stopCamera(); handleGtinFound(code.data); }
-    else { rafRef.current = requestAnimationFrame(scanFrame); }
-  }, [stopCamera]);
-
-  const startCamera = useCallback(async () => {
-    setCamError(""); setDetected(false);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode:"environment", width:{ ideal:1280 }, height:{ ideal:720 } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); scanFrame(); }
-    } catch { setCamError("Câmera não permitida. Use o campo manual abaixo."); }
-  }, [scanFrame]);
-
-  function openScanner() {
-    setScanner(true); setScanStep("camera"); setTrack(null); setDetected(false); setGps(null);
-    getGps();
-    setTimeout(() => startCamera(), 400);
-  }
-  function closeScanner() { stopCamera(); setScanner(false); }
-  useEffect(() => () => stopCamera(), [stopCamera]);
-
-  // ── Buscar histórico na blockchain ────────────────────────────────────────
-  async function handleGtinFound(value: string) {
-    const clean = value.trim(); if (!clean) return;
-    setScanning(true);
-    try {
-      const { data } = await api.get("/consumer/track/" + encodeURIComponent(clean));
-      setTrack(data); setScanStep("result");
-    } catch {
-      setTrack({
-        productName:"Produto não encontrado na blockchain",
-        gtin:clean, lot:"-", status:"UNKNOWN", expiryDate: new Date().toISOString(),
-        manufacturer:"Desconhecido", steps:[]
-      });
-      setScanStep("result");
-    } finally { setScanning(false); }
-  }
-
-  // ── Login ─────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+    setLoading(true);
     try {
       const { data } = await api.post("/auth/login", { cnpj, password });
       login(data.token, data.role, data.address, data.participantId);
-      navigate("/"); toast.success("Bem-vindo ao PharmaChain");
+      navigate("/about");
+      toast.success("Bem-vindo ao PharmaChain");
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? "Erro ao autenticar");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const polyUrl = (h: string) => "https://amoy.polygonscan.com/tx/" + h;
-  const mapUrl  = (lat: number, lng: number) => "https://maps.google.com/?q=" + lat + "," + lng;
-
   return (
-    <div style={{ fontFamily:"'Sora','DM Sans',sans-serif", background:"#f8fafc", minHeight:"100vh" }}>
+    <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", background:"#F0FAF4", minHeight:"100vh" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
-        *{margin:0;padding:0;box-sizing:border-box}
-        html{scroll-behavior:smooth}
-        .nav-btn{color:white;background:none;border:none;font-size:13px;font-weight:500;opacity:.8;cursor:pointer;font-family:'Sora',sans-serif;}
-        .nav-btn:hover{opacity:1}
-        .section{padding:100px 24px}
-        .container{max-width:1100px;margin:0 auto}
-        .feature-card{background:white;border-radius:16px;padding:32px;border:1px solid #e2e8f0;transition:transform .2s,box-shadow .2s}
-        .feature-card:hover{transform:translateY(-4px);box-shadow:0 20px 40px rgba(0,0,0,.08)}
-        .tag{display:inline-block;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-bottom:16px;letter-spacing:.5px;text-transform:uppercase}
-        .tab-btn{flex:1;padding:10px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s}
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html { scroll-behavior:smooth; }
+        .nk { color:#0F2417; text-decoration:none; font-size:13px; font-weight:500; opacity:.7; transition:opacity .2s; }
+        .nk:hover { opacity:1; }
+        .s { padding:88px 24px; }
+        .c { max-width:1080px; margin:0 auto; }
+        .tag { display:inline-block; background:#DCFCE7; color:#15803D; font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; margin-bottom:14px; letter-spacing:.6px; text-transform:uppercase; }
+        .fc { background:white; border-radius:18px; padding:28px; border:1px solid rgba(22,163,74,.12); transition:transform .2s,box-shadow .2s; }
+        .fc:hover { transform:translateY(-4px); box-shadow:0 20px 48px rgba(22,163,74,.12); }
+        .inp { width:100%; padding:12px 16px; border:1.5px solid rgba(22,163,74,.2); border-radius:10px; font-size:14px; font-family:'Plus Jakarta Sans',sans-serif; outline:none; transition:border-color .2s,box-shadow .2s; background:#F0FAF4; color:#0F2417; }
+        .inp:focus { border-color:#16A34A; background:white; box-shadow:0 0 0 3px rgba(22,163,74,.12); }
+        .sc { text-align:center; padding:28px 20px; background:white; border-radius:16px; border:1px solid rgba(22,163,74,.12); }
+        .ic { border-radius:18px; overflow:hidden; position:relative; height:200px; background:#0F2417; }
+        .ic img { width:100%; height:100%; object-fit:cover; opacity:.82; }
+        .ic-label { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent,rgba(0,0,0,.7)); padding:12px 16px; color:white; font-size:12px; font-weight:600; }
       `}</style>
 
-      {/* ── NAVBAR ── */}
-      <nav style={{ position:"fixed",top:0,left:0,right:0,zIndex:100,background:"rgba(10,22,40,0.96)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ maxWidth:1100,margin:"0 auto",padding:"0 24px",height:60,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:32,height:32,background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16 }}>💊</div>
-            <span style={{ color:"white",fontWeight:700,fontSize:16 }}>PharmaChain</span>
+      {/* NAVBAR */}
+      <nav style={{ position:"fixed", top:0, left:0, right:0, zIndex:100,
+        background:"rgba(255,255,255,0.94)", backdropFilter:"blur(16px)",
+        borderBottom:"1px solid rgba(22,163,74,0.12)",
+        boxShadow:"0 2px 20px rgba(22,163,74,0.06)" }}>
+        <div style={{ maxWidth:1080, margin:"0 auto", padding:"0 24px",
+          height:62, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:36, height:36, background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+              borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:18, boxShadow:"0 4px 12px rgba(22,163,74,0.3)" }}>💊</div>
+            <span style={{ color:"#0F2417", fontWeight:800, fontSize:16, letterSpacing:"-0.4px" }}>PharmaChain</span>
           </div>
-          <div style={{ display:"flex",alignItems:"center",gap:24 }}>
-            {[["termos","Termos de Uso"],["privacidade","Privacidade"],["contato","Contato"]].map(([k,l]) => (
-              <button key={k} className="nav-btn" onClick={() => { setMType(k as any); setModal(true); }}>{l}</button>
-            ))}
-            <a href="#acesso" style={{ background:"#3b82f6",color:"white",padding:"8px 20px",borderRadius:8,fontSize:13,fontWeight:600,textDecoration:"none" }}>Entrar</a>
+          <div style={{ display:"flex", alignItems:"center", gap:28 }}>
+            <Link to="/terms"   className="nk">Termos de Uso</Link>
+            <Link to="/privacy" className="nk">Política de Privacidade</Link>
+            <Link to="/contact" className="nk">Fale Conosco</Link>
+            <a href="#login" style={{ background:"linear-gradient(135deg,#16A34A,#15803D)",
+              color:"white", padding:"9px 22px", borderRadius:10, fontSize:13,
+              fontWeight:700, textDecoration:"none",
+              boxShadow:"0 4px 12px rgba(22,163,74,0.3)" }}>Login</a>
           </div>
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <section style={{ minHeight:"100vh",background:"linear-gradient(160deg,#0a1628 0%,#0f2552 60%,#1a3a6e 100%)",display:"flex",alignItems:"center",padding:"0 24px",paddingTop:60,position:"relative",overflow:"hidden" }}>
-        <div style={{ position:"absolute",top:-100,right:-100,width:600,height:600,borderRadius:"50%",background:"radial-gradient(circle,rgba(59,130,246,.15) 0%,transparent 70%)",pointerEvents:"none" }} />
+      {/* HERO */}
+      <section style={{ minHeight:"100vh",
+        background:"linear-gradient(160deg,#0F2417 0%,#14532D 55%,#166534 100%)",
+        display:"flex", alignItems:"center", padding:"0 24px", paddingTop:62,
+        position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", top:-80, right:-80, width:500, height:500,
+          borderRadius:"50%", background:"radial-gradient(circle,rgba(74,222,128,0.12) 0%,transparent 70%)",
+          pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", bottom:-60, left:-60, width:380, height:380,
+          borderRadius:"50%", background:"radial-gradient(circle,rgba(22,163,74,0.15) 0%,transparent 70%)",
+          pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", top:"20%", left:"3%", fontSize:100, opacity:.06, pointerEvents:"none" }}>🧬</div>
+        <div style={{ position:"absolute", bottom:"12%", left:"6%", fontSize:80, opacity:.05, pointerEvents:"none" }}>🔬</div>
+        <div style={{ position:"absolute", top:"45%", right:"3%", fontSize:90, opacity:.05, pointerEvents:"none" }}>🏥</div>
 
-        <div style={{ maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",gap:60,alignItems:"center" }}>
-          {/* Texto esquerdo */}
-          <motion.div initial={{ opacity:0,x:-40 }} animate={{ opacity:1,x:0 }} transition={{ duration:.7 }} style={{ flex:1 }}>
-            <div style={{ display:"inline-flex",alignItems:"center",gap:8,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.3)",borderRadius:20,padding:"6px 16px",marginBottom:24 }}>
-              <div style={{ width:6,height:6,borderRadius:"50%",background:"#10b981" }} />
-              <span style={{ color:"#93c5fd",fontSize:12,fontWeight:500 }}>Rede Blockchain Ativa — Polygon Amoy</span>
+        <div style={{ maxWidth:1080, margin:"0 auto", width:"100%",
+          display:"flex", gap:64, alignItems:"center" }}>
+
+          {/* Texto */}
+          <div style={{ flex:1 }}>
+            <div style={{ display:"inline-flex", alignItems:"center", gap:8,
+              background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)",
+              borderRadius:20, padding:"6px 16px", marginBottom:24 }}>
+              <div style={{ width:7, height:7, borderRadius:"50%", background:"#4ADE80",
+                boxShadow:"0 0 8px #4ADE80" }}/>
+              <span style={{ color:"#4ADE80", fontSize:12, fontWeight:600 }}>
+                Rede Blockchain Ativa — Polygon Amoy
+              </span>
             </div>
-            <h1 style={{ color:"white",fontSize:52,fontWeight:800,lineHeight:1.1,letterSpacing:"-1.5px",marginBottom:20 }}>
-              Rastreabilidade<br /><span style={{ color:"#60a5fa" }}>Farmacêutica</span><br />em Blockchain
+            <h1 style={{ color:"white", fontSize:52, fontWeight:800, lineHeight:1.08,
+              letterSpacing:"-2px", marginBottom:20 }}>
+              Rastreabilidade<br/>
+              <span style={{ color:"#4ADE80" }}>Farmacêutica</span><br/>
+              em Blockchain
             </h1>
-            <p style={{ color:"rgba(255,255,255,.65)",fontSize:17,lineHeight:1.7,marginBottom:36,maxWidth:480 }}>
-              Controle total da cadeia logística de medicamentos — do fabricante ao paciente — com rastreabilidade imutável, conformidade ANVISA e inteligência em tempo real.
+            <p style={{ color:"rgba(255,255,255,0.65)", fontSize:17, lineHeight:1.8,
+              marginBottom:36, maxWidth:460 }}>
+              Controle total da cadeia logística de medicamentos — do fabricante à farmácia —
+              com rastreabilidade imutável, conformidade ANVISA e inteligência em tempo real.
             </p>
-            <div style={{ display:"flex",gap:12 }}>
-              <a href="#sobre" style={{ background:"#3b82f6",color:"white",padding:"13px 28px",borderRadius:10,fontWeight:600,textDecoration:"none",fontSize:14 }}>Conheça o Projeto</a>
-              <button onClick={openScanner} style={{ background:"rgba(255,255,255,.1)",color:"white",padding:"13px 28px",borderRadius:10,fontWeight:600,fontSize:14,border:"1px solid rgba(255,255,255,.15)",cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",gap:8 }}>
-                <QrCode size={16} /> Ver Histórico do Meu Medicamento
-              </button>
+            <div style={{ display:"flex", gap:32, marginBottom:36 }}>
+              {[
+                { num:"100%", label:"Rastreabilidade" },
+                { num:"< 2s", label:"Registro blockchain" },
+                { num:"24/7", label:"Disponibilidade" },
+              ].map((s, i) => (
+                <div key={i}>
+                  <p style={{ color:"#4ADE80", fontSize:26, fontWeight:800, marginBottom:2 }}>{s.num}</p>
+                  <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{s.label}</p>
+                </div>
+              ))}
             </div>
-          </motion.div>
+            <div style={{ display:"flex", gap:12 }}>
+              <a href="#sobre" style={{ background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+                color:"white", padding:"13px 28px", borderRadius:11, fontWeight:700,
+                textDecoration:"none", fontSize:14,
+                boxShadow:"0 8px 24px rgba(22,163,74,0.4)" }}>
+                Conheça o Projeto
+              </a>
+              <a href="#login" style={{ background:"rgba(255,255,255,0.1)", color:"white",
+                padding:"13px 28px", borderRadius:11, fontWeight:600,
+                textDecoration:"none", fontSize:14,
+                border:"1px solid rgba(255,255,255,0.2)" }}>
+                Acessar Sistema
+              </a>
+            </div>
+          </div>
 
-          {/* Card de login com abas */}
-          <motion.div id="acesso" initial={{ opacity:0,y:30 }} animate={{ opacity:1,y:0 }} transition={{ duration:.7,delay:.2 }}
-            style={{ width:400,background:"rgba(255,255,255,.97)",borderRadius:20,padding:40,boxShadow:"0 40px 80px rgba(0,0,0,.3)",flexShrink:0 }}>
-
-            <div style={{ textAlign:"center",marginBottom:24 }}>
-              <div style={{ width:52,height:52,borderRadius:14,background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:22 }}>💊</div>
-              <h2 style={{ fontSize:20,fontWeight:700,color:"#1e293b",marginBottom:4 }}>PharmaChain</h2>
+          {/* Login Card */}
+          <div id="login" style={{ width:380, flexShrink:0 }}>
+            <div style={{ background:"rgba(255,255,255,0.97)", borderRadius:24, padding:40,
+              boxShadow:"0 48px 96px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)" }}>
+              <div style={{ textAlign:"center", marginBottom:28 }}>
+                <div style={{ width:56, height:56, borderRadius:16,
+                  background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  margin:"0 auto 16px", fontSize:24,
+                  boxShadow:"0 8px 24px rgba(22,163,74,0.35)" }}>💊</div>
+                <h2 style={{ fontSize:21, fontWeight:800, color:"#0F2417", marginBottom:4 }}>Acesso ao Sistema</h2>
+                <p style={{ color:"#4B6B58", fontSize:13 }}>Insira suas credenciais para continuar</p>
+              </div>
+              <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:"#4B6B58",
+                    display:"block", marginBottom:6, letterSpacing:".5px" }}>CNPJ</label>
+                  <input className="inp" type="text" placeholder="00.000.000/0001-00"
+                    value={cnpj} onChange={e => setCnpj(e.target.value)} required/>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:"#4B6B58",
+                    display:"block", marginBottom:6, letterSpacing:".5px" }}>SENHA</label>
+                  <input className="inp" type="password" placeholder="••••••••"
+                    value={password} onChange={e => setPassword(e.target.value)} required/>
+                </div>
+                <button type="submit" disabled={loading}
+                  style={{ marginTop:6, height:46, fontSize:15, width:"100%", fontWeight:700,
+                    background:"linear-gradient(135deg,#15803D,#16A34A)", color:"white",
+                    border:"none", borderRadius:11, cursor:"pointer", fontFamily:"inherit",
+                    boxShadow:"0 6px 20px rgba(22,163,74,0.35)",
+                    opacity: loading ? .7 : 1 }}>
+                  {loading ? "Autenticando..." : "Entrar"}
+                </button>
+              </form>
+              <p style={{ textAlign:"center", fontSize:11, color:"#94a3b8", marginTop:20, lineHeight:1.6 }}>
+                Acesso restrito a participantes autorizados<br/>da rede PharmaChain
+              </p>
             </div>
 
-            {/* Abas */}
-            <div style={{ display:"flex",gap:6,background:"#f1f5f9",borderRadius:12,padding:4,marginBottom:24 }}>
-              <button className="tab-btn" onClick={() => setTab("empresa")}
-                style={{ background:activeTab==="empresa"?"white":"transparent", color:activeTab==="empresa"?"#1e3a8a":"#64748b", boxShadow:activeTab==="empresa"?"0 2px 8px rgba(0,0,0,.08)":"none" }}>
-                Empresas
-              </button>
-              <button className="tab-btn" onClick={() => setTab("consumidor")}
-                style={{ background:activeTab==="consumidor"?"white":"transparent", color:activeTab==="consumidor"?"#1e3a8a":"#64748b", boxShadow:activeTab==="consumidor"?"0 2px 8px rgba(0,0,0,.08)":"none" }}>
-                Consumidor
-              </button>
+            {/* Mini galeria */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:12 }}>
+              {IMGS.map((img, i) => (
+                <div key={i} className="ic">
+                  <img src={img.url} alt={img.label}
+                    onError={e => (e.currentTarget.style.display="none")}/>
+                  <div className="ic-label">{img.label}</div>
+                </div>
+              ))}
             </div>
-
-            <AnimatePresence mode="wait">
-              {activeTab === "empresa" ? (
-                <motion.div key="empresa" initial={{ opacity:0,y:8 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-8 }}>
-                  <form onSubmit={handleSubmit} style={{ display:"flex",flexDirection:"column",gap:14 }}>
-                    <div>
-                      <label style={{ fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6 }}>CNPJ</label>
-                      <input style={{ width:"100%",padding:"11px 14px",border:"1.5px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",fontFamily:"'Sora',sans-serif" }}
-                        placeholder="00.000.000/0001-00" value={cnpj} onChange={e => setCnpj(e.target.value)} required />
-                    </div>
-                    <div>
-                      <label style={{ fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6 }}>SENHA</label>
-                      <input style={{ width:"100%",padding:"11px 14px",border:"1.5px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",fontFamily:"'Sora',sans-serif" }}
-                        type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
-                    </div>
-                    <button type="submit" disabled={loading}
-                      style={{ padding:"12px",background:"linear-gradient(135deg,#0a1628,#1e3a8a)",color:"white",border:"none",borderRadius:10,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"'Sora',sans-serif",marginTop:4 }}>
-                      {loading ? "Autenticando..." : "Entrar"}
-                    </button>
-                  </form>
-                  <p style={{ textAlign:"center",fontSize:11,color:"#94a3b8",marginTop:16,lineHeight:1.6 }}>
-                    Acesso restrito a participantes autorizados da rede PharmaChain
-                  </p>
-                </motion.div>
-              ) : (
-                <motion.div key="consumidor" initial={{ opacity:0,y:8 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-8 }}>
-                  <div style={{ textAlign:"center",marginBottom:20 }}>
-                    <p style={{ fontSize:13,color:"#64748b",lineHeight:1.7 }}>
-                      Consulte o histórico completo do seu medicamento na blockchain — transporte, armazenamento, distribuição e venda.
-                    </p>
-                  </div>
-                  <button onClick={openScanner}
-                    style={{ width:"100%",padding:"14px",background:"linear-gradient(135deg,#0a1628,#1e3a8a)",color:"white",border:"none",borderRadius:10,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12 }}>
-                    <Camera size={18} /> Escanear QR Code do Medicamento
-                  </button>
-                  <p style={{ textAlign:"center",fontSize:11,color:"#94a3b8" }}>
-                    Aponte a câmera para o QR Code na embalagem
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* ── SOBRE ── */}
-      <section id="sobre" className="section" style={{ background:"white" }}>
-        <div className="container">
-          <motion.div initial={{ opacity:0,y:30 }} whileInView={{ opacity:1,y:0 }} viewport={{ once:true }} style={{ textAlign:"center",marginBottom:64 }}>
-            <span className="tag">Sobre o Projeto</span>
-            <h2 style={{ fontSize:40,fontWeight:800,color:"#0a1628",letterSpacing:"-1px",marginBottom:16 }}>O que é o PharmaChain?</h2>
-            <p style={{ color:"#64748b",fontSize:17,maxWidth:620,margin:"0 auto",lineHeight:1.7 }}>
-              Uma plataforma de rastreabilidade farmacêutica baseada em blockchain, garantindo integridade, transparência e conformidade de toda a cadeia logística de medicamentos no Brasil.
-            </p>
-          </motion.div>
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:24 }}>
-            {[
-              { icon:"🔗",title:"Blockchain Imutável",desc:"Cada movimentação de lote é registrada permanentemente na rede Polygon, garantindo rastreabilidade total e à prova de adulteração." },
-              { icon:"🏥",title:"Conformidade ANVISA",desc:"Atende às exigências da RDC 204/2017 e demais normativas da ANVISA para rastreabilidade de medicamentos no Brasil." },
-              { icon:"👤",title:"Transparência ao Paciente",desc:"Consumidores podem verificar todo o histórico do seu medicamento — da fábrica à farmácia — escaneando o QR Code da embalagem." },
-            ].map((item,i) => (
-              <motion.div key={i} className="feature-card" initial={{ opacity:0,y:20 }} whileInView={{ opacity:1,y:0 }} viewport={{ once:true }} transition={{ delay:i*.1 }}>
-                <div style={{ fontSize:36,marginBottom:16 }}>{item.icon}</div>
-                <h3 style={{ fontSize:18,fontWeight:700,color:"#0a1628",marginBottom:10 }}>{item.title}</h3>
-                <p style={{ color:"#64748b",fontSize:14,lineHeight:1.7 }}>{item.desc}</p>
-              </motion.div>
+      {/* IMAGENS ILUSTRATIVAS */}
+      <section className="s" style={{ background:"white", paddingBottom:64 }}>
+        <div className="c">
+          <div style={{ textAlign:"center", marginBottom:48 }}>
+            <span className="tag">Tecnologia em Ação</span>
+            <h2 style={{ fontSize:36, fontWeight:800, color:"#0F2417", letterSpacing:"-1px" }}>
+              Inovação na Cadeia Farmacêutica
+            </h2>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16 }}>
+            {IMGS.map((img, i) => (
+              <div key={i} style={{ borderRadius:20, overflow:"hidden", position:"relative",
+                height:220, background:"#0F2417",
+                boxShadow:"0 12px 40px rgba(22,163,74,0.15)" }}>
+                <img src={img.url} alt={img.label}
+                  style={{ width:"100%", height:"100%", objectFit:"cover", opacity:.85 }}
+                  onError={e => (e.currentTarget.style.display="none")}/>
+                <div style={{ position:"absolute", inset:0,
+                  background:"linear-gradient(to top,rgba(15,36,23,0.8) 0%,transparent 60%)" }}/>
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"16px" }}>
+                  <p style={{ color:"white", fontSize:13, fontWeight:700 }}>{img.label}</p>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── COMO FUNCIONA ── */}
-      <section className="section" style={{ background:"#f1f5f9" }}>
-        <div className="container">
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:80,alignItems:"center" }}>
-            <motion.div initial={{ opacity:0,x:-30 }} whileInView={{ opacity:1,x:0 }} viewport={{ once:true }}>
+      {/* SOBRE */}
+      <section id="sobre" className="s" style={{ background:"#F0FAF4" }}>
+        <div className="c">
+          <div style={{ textAlign:"center", marginBottom:56 }}>
+            <span className="tag">Sobre o Projeto</span>
+            <h2 style={{ fontSize:38, fontWeight:800, color:"#0F2417", letterSpacing:"-1px", marginBottom:14 }}>
+              O que é o PharmaChain?
+            </h2>
+            <p style={{ color:"#4B6B58", fontSize:16, maxWidth:580, margin:"0 auto", lineHeight:1.8 }}>
+              Plataforma blockchain para garantir integridade e conformidade ANVISA
+              em toda a cadeia logística de medicamentos no Brasil.
+            </p>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20 }}>
+            {[
+              { icon:"🔗", title:"Blockchain Imutável",  desc:"Cada movimentação de lote registrada permanentemente na rede Polygon, à prova de adulteração." },
+              { icon:"🏥", title:"Conformidade ANVISA",  desc:"Atende RDC 204/2017 e demais normativas para rastreabilidade de medicamentos no Brasil." },
+              { icon:"⚡", title:"Tempo Real",           desc:"Monitoramento ao vivo de transferências, alertas de temperatura e dispensação de receitas." },
+            ].map((item, i) => (
+              <div key={i} className="fc">
+                <div style={{ fontSize:36, marginBottom:16 }}>{item.icon}</div>
+                <h3 style={{ fontSize:17, fontWeight:700, color:"#0F2417", marginBottom:10 }}>{item.title}</h3>
+                <p style={{ color:"#4B6B58", fontSize:14, lineHeight:1.75 }}>{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* BLOCKCHAIN */}
+      <section className="s" style={{ background:"white" }}>
+        <div className="c">
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:72, alignItems:"center" }}>
+            <div>
               <span className="tag">Tecnologia</span>
-              <h2 style={{ fontSize:38,fontWeight:800,color:"#0a1628",letterSpacing:"-1px",marginBottom:16,lineHeight:1.15 }}>
+              <h2 style={{ fontSize:36, fontWeight:800, color:"#0F2417", letterSpacing:"-1px",
+                marginBottom:14, lineHeight:1.2 }}>
                 Inteligência Blockchain conectada à Logística Farmacêutica
               </h2>
-              <p style={{ color:"#64748b",fontSize:16,lineHeight:1.8,marginBottom:24 }}>
-                Cada lote tem um registro único, verificável e permanente. Smart contracts automatizam aprovações, alertas e recalls sem intervenção humana.
+              <p style={{ color:"#4B6B58", fontSize:15, lineHeight:1.8, marginBottom:22 }}>
+                Smart contracts automatizam aprovações, alertas e recalls. Cada lote tem registro
+                único, verificável e permanente na rede Polygon Amoy.
               </p>
-              {["Contratos inteligentes auditados (OpenZeppelin)","Assinaturas ECDSA em cada transferência","CPF do consumidor protegido por SHA-256 (LGPD)","Rede pública — auditável por qualquer um"].map((item,i) => (
-                <div key={i} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:10 }}>
-                  <div style={{ width:20,height:20,borderRadius:"50%",background:"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
-                    <span style={{ fontSize:10,color:"#1e40af" }}>✓</span>
-                  </div>
-                  <span style={{ fontSize:14,color:"#374151" }}>{item}</span>
-                </div>
-              ))}
-            </motion.div>
-
-            <motion.div initial={{ opacity:0,x:30 }} whileInView={{ opacity:1,x:0 }} viewport={{ once:true }}
-              style={{ background:"linear-gradient(135deg,#0a1628,#1e3a8a)",borderRadius:20,padding:40,color:"white" }}>
-              <p style={{ fontSize:12,color:"#93c5fd",fontWeight:600,marginBottom:20,letterSpacing:"1px" }}>FLUXO COMPLETO</p>
               {[
-                { n:"01",l:"Fabricante registra lote",s:"GTIN-14 + hash SHA-256 na blockchain" },
-                { n:"02",l:"Distribuidor recebe",s:"Assinatura ECDSA + NF-e validada" },
-                { n:"03",l:"Farmácia confirma",s:"Estoque atualizado em tempo real" },
-                { n:"04",l:"Médico emite receita",s:"Criptografada AES-256 + LGPD" },
-                { n:"05",l:"Paciente retira",s:"CPF vinculado ao lote na blockchain" },
-                { n:"06",l:"Consumidor rastreia",s:"QR Code mostra todo o histórico" },
-              ].map((item,i) => (
-                <div key={i} style={{ display:"flex",gap:16,marginBottom:i<5?18:0,alignItems:"flex-start" }}>
-                  <div style={{ width:32,height:32,borderRadius:8,background:"rgba(59,130,246,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#93c5fd",flexShrink:0 }}>{item.n}</div>
+                "Contratos inteligentes auditados (OpenZeppelin)",
+                "Assinaturas ECDSA em cada transferência",
+                "Hash SHA-256 para validação de dados",
+                "Rede pública — sem servidor central",
+              ].map((item, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                  <div style={{ width:22, height:22, borderRadius:"50%", background:"#DCFCE7",
+                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontSize:11, color:"#16A34A", fontWeight:700 }}>✓</span>
+                  </div>
+                  <span style={{ fontSize:14, color:"#374151" }}>{item}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ background:"linear-gradient(135deg,#0F2417,#14532D)",
+              borderRadius:22, padding:36, color:"white" }}>
+              <p style={{ fontSize:11, color:"#4ADE80", fontWeight:700, marginBottom:20,
+                letterSpacing:"1.5px" }}>FLUXO DE RASTREABILIDADE</p>
+              {[
+                { step:"01", label:"Fabricante registra lote",  sub:"GTIN-14 + hash SHA-256 → blockchain" },
+                { step:"02", label:"Distribuidor recebe",        sub:"Assinatura ECDSA + NF-e validada" },
+                { step:"03", label:"Farmácia confirma",          sub:"Estoque atualizado em tempo real" },
+                { step:"04", label:"Médico emite receita",       sub:"Criptografada AES-256 + LGPD" },
+                { step:"05", label:"Paciente retira",            sub:"Dispensação registrada na blockchain" },
+              ].map((item, i) => (
+                <div key={i} style={{ display:"flex", gap:14, marginBottom:i<4?18:0, alignItems:"flex-start" }}>
+                  <div style={{ width:32, height:32, borderRadius:9,
+                    background:"rgba(74,222,128,0.2)", display:"flex", alignItems:"center",
+                    justifyContent:"center", fontSize:11, fontWeight:700, color:"#4ADE80", flexShrink:0 }}>
+                    {item.step}
+                  </div>
                   <div>
-                    <p style={{ fontSize:14,fontWeight:600,marginBottom:2 }}>{item.l}</p>
-                    <p style={{ fontSize:12,color:"rgba(255,255,255,.5)" }}>{item.s}</p>
+                    <p style={{ fontSize:14, fontWeight:600, marginBottom:2 }}>{item.label}</p>
+                    <p style={{ fontSize:12, color:"rgba(255,255,255,0.45)" }}>{item.sub}</p>
                   </div>
                 </div>
               ))}
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section className="section" style={{ background:"white" }}>
-        <div className="container" style={{ textAlign:"center" }}>
-          <span className="tag">Resultados</span>
-          <h2 style={{ fontSize:40,fontWeight:800,color:"#0a1628",letterSpacing:"-1px",marginBottom:48 }}>Impacto mensurável</h2>
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:20 }}>
-            {[
-              { num:"100%",label:"Rastreabilidade de lotes",color:"#3b82f6" },
-              { num:"< 2s",label:"Registro na blockchain",color:"#10b981" },
-              { num:"0",label:"Ponto central de falha",color:"#f59e0b" },
-              { num:"24/7",label:"Disponibilidade da rede",color:"#8b5cf6" },
-            ].map((item,i) => (
-              <motion.div key={i} initial={{ opacity:0,y:20 }} whileInView={{ opacity:1,y:0 }} viewport={{ once:true }} transition={{ delay:i*.1 }}
-                style={{ textAlign:"center",padding:"32px 24px",background:"white",borderRadius:16,border:"1px solid #e2e8f0" }}>
-                <p style={{ fontSize:42,fontWeight:800,color:item.color,marginBottom:8 }}>{item.num}</p>
-                <p style={{ fontSize:13,color:"#64748b",fontWeight:500 }}>{item.label}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA ── */}
-      <section className="section" style={{ background:"linear-gradient(135deg,#0a1628,#1e3a8a)" }}>
-        <div className="container" style={{ textAlign:"center" }}>
-          <h2 style={{ fontSize:44,fontWeight:800,color:"white",letterSpacing:"-1px",marginBottom:16 }}>Transparência do Início ao Fim</h2>
-          <p style={{ color:"rgba(255,255,255,.65)",fontSize:17,maxWidth:520,margin:"0 auto 36px",lineHeight:1.7 }}>
-            Do registro do lote na fábrica até as mãos do paciente, cada etapa rastreada, verificada e permanente.
+      {/* CTA */}
+      <section className="s" style={{ background:"linear-gradient(135deg,#0F2417,#14532D)" }}>
+        <div className="c" style={{ textAlign:"center" }}>
+          <span style={{ display:"inline-block", background:"rgba(74,222,128,0.15)",
+            color:"#4ADE80", fontSize:11, fontWeight:700, padding:"4px 14px", borderRadius:20,
+            marginBottom:24, letterSpacing:"1px", textTransform:"uppercase" }}>
+            Logística Farmacêutica
+          </span>
+          <h2 style={{ fontSize:44, fontWeight:800, color:"white", letterSpacing:"-1px", marginBottom:16 }}>
+            Cuidamos da sua Logística
+          </h2>
+          <p style={{ color:"rgba(255,255,255,0.6)", fontSize:17, maxWidth:500,
+            margin:"0 auto 36px", lineHeight:1.8 }}>
+            Do registro na fábrica à dispensação na farmácia — cada etapa rastreada,
+            verificada e registrada permanentemente na blockchain.
           </p>
-          <button onClick={openScanner} style={{ background:"white",color:"#1e40af",padding:"14px 36px",borderRadius:12,fontWeight:700,fontSize:15,border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif" }}>
-            Ver Histórico do Meu Medicamento
-          </button>
+          <a href="#login" style={{ display:"inline-block",
+            background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+            color:"white", padding:"15px 40px", borderRadius:13,
+            fontWeight:800, textDecoration:"none", fontSize:15,
+            boxShadow:"0 12px 32px rgba(22,163,74,0.4)" }}>
+            Acessar o Sistema →
+          </a>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer style={{ background:"#020817",padding:"32px 24px" }}>
-        <div className="container" style={{ display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:28,height:28,background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14 }}>💊</div>
-            <span style={{ color:"white",fontWeight:700,fontSize:14 }}>PharmaChain</span>
-          </div>
-          <p style={{ color:"#475569",fontSize:13 }}>© 2026 PharmaChain · Matheus Augusto Roseira Santana · Salvador, Bahia</p>
-          <div style={{ display:"flex",gap:20 }}>
-            {[["termos","Termos"],["privacidade","Privacidade"],["contato","Contato"]].map(([k,l]) => (
-              <button key={k} className="nav-btn" style={{ color:"#475569",fontSize:12 }} onClick={() => { setMType(k as any); setModal(true); }}>{l}</button>
-            ))}
+      {/* FOOTER */}
+      <footer style={{ background:"#020F07", padding:"36px 24px" }}>
+        <div className="c">
+          <div style={{ display:"flex", justifyContent:"space-between",
+            alignItems:"center", flexWrap:"wrap", gap:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:30, height:30, background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+                borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>💊</div>
+              <span style={{ color:"white", fontWeight:700, fontSize:14 }}>PharmaChain</span>
+            </div>
+            <p style={{ color:"#374151", fontSize:12 }}>
+              Copyright © 2026 PharmaChain. Todos os direitos reservados.
+              Matheus Augusto Roseira Santana · Salvador, Bahia.
+            </p>
+            <div style={{ display:"flex", gap:20 }}>
+              <Link to="/terms"   style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Termos de Uso</Link>
+              <Link to="/privacy" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Privacidade</Link>
+              <Link to="/contact" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Contato</Link>
+            </div>
           </div>
         </div>
       </footer>
-
-      {/* ── MODAL SCANNER CONSUMIDOR ── */}
-      <AnimatePresence>
-        {showScanner && (
-          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-            style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}
-            onClick={e => { if(e.target===e.currentTarget) closeScanner(); }}>
-            <motion.div initial={{ scale:.92,opacity:0 }} animate={{ scale:1,opacity:1 }} exit={{ scale:.92,opacity:0 }}
-              style={{ background:"white",borderRadius:24,width:"100%",maxWidth:600,maxHeight:"95vh",overflowY:"auto" }}>
-
-              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"24px 28px 0" }}>
-                <div>
-                  <h2 style={{ fontSize:20,fontWeight:800,color:"#0a1628" }}>
-                    {scanStep==="camera" ? "Escanear Medicamento" : "Histórico na Blockchain"}
-                  </h2>
-                  <p style={{ fontSize:13,color:"#64748b",marginTop:2 }}>
-                    {scanStep==="camera" ? "Aponte a câmera para o QR Code da embalagem" : "Rastreabilidade completa do seu medicamento"}
-                  </p>
-                </div>
-                <button onClick={closeScanner} style={{ background:"#f1f5f9",border:"none",borderRadius:10,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div style={{ padding:28 }}>
-                {scanStep === "camera" ? (
-                  <div>
-                    {/* Viewfinder */}
-                    <div style={{ position:"relative",borderRadius:16,overflow:"hidden",background:"#0a1628",marginBottom:20,aspectRatio:"4/3" }}>
-                      <video ref={videoRef} playsInline muted style={{ width:"100%",height:"100%",objectFit:"cover",display:"block" }} />
-                      <canvas ref={canvasRef} style={{ display:"none" }} />
-                      {!camError && !detected && (
-                        <div style={{ position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none" }}>
-                          <div style={{ width:200,height:200,position:"relative" }}>
-                            {["tl","tr","bl","br"].map(p => (
-                              <div key={p} style={{ position:"absolute",
-                                top:p.startsWith("t")?0:"auto", bottom:p.startsWith("b")?0:"auto",
-                                left:p.endsWith("l")?0:"auto", right:p.endsWith("r")?0:"auto",
-                                width:28,height:28,
-                                borderTop:p.startsWith("t")?"3px solid #3b82f6":"none",
-                                borderBottom:p.startsWith("b")?"3px solid #3b82f6":"none",
-                                borderLeft:p.endsWith("l")?"3px solid #3b82f6":"none",
-                                borderRight:p.endsWith("r")?"3px solid #3b82f6":"none",
-                              }} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {detected && (
-                        <div style={{ position:"absolute",inset:0,background:"rgba(16,185,129,.3)",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                          <CheckCircle size={64} color="white" />
-                        </div>
-                      )}
-                      {camError && (
-                        <div style={{ position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center" }}>
-                          <QrCode size={40} color="#94a3b8" style={{ marginBottom:12 }} />
-                          <p style={{ color:"#94a3b8",fontSize:13 }}>{camError}</p>
-                        </div>
-                      )}
-                      {scanning && (
-                        <div style={{ position:"absolute",inset:0,background:"rgba(10,22,40,.7)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
-                          <Wifi size={32} color="#3b82f6" style={{ marginBottom:12 }} />
-                          <p style={{ color:"white",fontSize:14,fontWeight:600 }}>Consultando blockchain...</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* GPS */}
-                    <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:gps?"#d1fae5":"#f8fafc",borderRadius:10,marginBottom:16,border:"1px solid "+(gps?"#a7f3d0":"#e2e8f0") }}>
-                      <MapPin size={14} color={gps?"#10b981":"#94a3b8"} />
-                      <span style={{ fontSize:12,color:gps?"#065f46":"#94a3b8" }}>
-                        {gps ? "GPS: "+gps.lat.toFixed(5)+", "+gps.lng.toFixed(5) : "Capturando localização GPS..."}
-                      </span>
-                    </div>
-
-                    {/* Manual */}
-                    <div style={{ borderTop:"1px solid #f1f5f9",paddingTop:16 }}>
-                      <p style={{ fontSize:12,color:"#94a3b8",marginBottom:8,textAlign:"center" }}>Ou digite o código do medicamento</p>
-                      <div style={{ display:"flex",gap:8 }}>
-                        <input id="manual-gtin" style={{ flex:1,padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",fontFamily:"monospace" }}
-                          placeholder="Ex: 7896123456789" />
-                        <button onClick={() => { const v=(document.getElementById("manual-gtin") as HTMLInputElement).value; stopCamera(); handleGtinFound(v); }}
-                          style={{ padding:"10px 18px",background:"#0071E3",color:"white",border:"none",borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer" }}>
-                          Buscar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* ── RESULTADO ── */
-                  <motion.div initial={{ opacity:0,y:10 }} animate={{ opacity:1,y:0 }}>
-                    {trackResult && (
-                      <div>
-                        {/* Header do medicamento */}
-                        <div style={{ background:"linear-gradient(135deg,#0a1628,#1e3a8a)",borderRadius:16,padding:24,marginBottom:20,color:"white" }}>
-                          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
-                            <div style={{ width:8,height:8,borderRadius:"50%",background:trackResult.status==="ACTIVE"?"#10b981":"#ef4444" }} />
-                            <span style={{ fontSize:11,color:"#93c5fd",fontWeight:700 }}>
-                              {trackResult.status==="ACTIVE" ? "ATIVO — PRODUTO AUTENTICO" : trackResult.status}
-                            </span>
-                          </div>
-                          <h3 style={{ fontSize:20,fontWeight:800,marginBottom:4 }}>{trackResult.productName}</h3>
-                          <p style={{ fontSize:12,color:"rgba(255,255,255,.6)",marginBottom:16 }}>
-                            GTIN: {trackResult.gtin}  |  Lote: {trackResult.lot}  |  Fabricante: {trackResult.manufacturer}
-                          </p>
-                          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12 }}>
-                            <div style={{ background:"rgba(255,255,255,.08)",borderRadius:10,padding:12 }}>
-                              <p style={{ fontSize:11,color:"#93c5fd",marginBottom:4 }}>VALIDADE</p>
-                              <p style={{ fontSize:14,fontWeight:600 }}>{format(new Date(trackResult.expiryDate),"dd/MM/yyyy")}</p>
-                            </div>
-                            <div style={{ background:"rgba(255,255,255,.08)",borderRadius:10,padding:12 }}>
-                              <p style={{ fontSize:11,color:"#93c5fd",marginBottom:4 }}>MOVIMENTACOES</p>
-                              <p style={{ fontSize:14,fontWeight:600 }}>{trackResult.steps?.length ?? 0} registros</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* GPS atual */}
-                        {gps && (
-                          <div style={{ background:"#f0fdf4",border:"1px solid #a7f3d0",borderRadius:12,padding:14,marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
-                            <MapPin size={18} color="#10b981" />
-                            <div style={{ flex:1 }}>
-                              <p style={{ fontSize:13,fontWeight:700,color:"#065f46" }}>Você está aqui</p>
-                              <p style={{ fontSize:11,fontFamily:"monospace",color:"#047857" }}>{gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}</p>
-                            </div>
-                            <a href={mapUrl(gps.lat,gps.lng)} target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize:12,color:"#10b981",fontWeight:600,textDecoration:"none",background:"#d1fae5",padding:"6px 12px",borderRadius:8 }}>
-                              Ver mapa
-                            </a>
-                          </div>
-                        )}
-
-                        {/* Linha do tempo */}
-                        <h4 style={{ fontSize:15,fontWeight:700,color:"#0a1628",marginBottom:16 }}>Jornada Completa do Medicamento</h4>
-                        {trackResult.steps && trackResult.steps.length > 0 ? (
-                          <div style={{ position:"relative" }}>
-                            <div style={{ position:"absolute",left:20,top:0,bottom:0,width:2,background:"#e2e8f0" }} />
-                            {trackResult.steps.map((step, i) => {
-                              const cfg = STEP_CONFIG[step.type] ?? STEP_CONFIG.MANUFACTURE;
-                              const Icon = cfg.icon;
-                              return (
-                                <motion.div key={i} initial={{ opacity:0,x:-10 }} animate={{ opacity:1,x:0 }} transition={{ delay:i*.06 }}
-                                  style={{ display:"flex",gap:16,paddingLeft:8,paddingBottom:18 }}>
-                                  <div style={{ width:24,height:24,borderRadius:"50%",background:cfg.color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:1,marginTop:4 }}>
-                                    <Icon size={13} color="white" />
-                                  </div>
-                                  <div style={{ flex:1,background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:14 }}>
-                                    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6 }}>
-                                      <span style={{ background:cfg.color+"18",color:cfg.color,fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20 }}>{cfg.label}</span>
-                                      <span style={{ fontSize:11,color:"#94a3b8" }}>{format(new Date(step.date),"dd/MM/yyyy HH:mm",{ locale:ptBR })}</span>
-                                    </div>
-                                    <p style={{ fontSize:13,color:"#374151",marginBottom:4 }}>
-                                      <strong>{step.from}</strong> transferiu para <strong>{step.to}</strong>
-                                    </p>
-                                    <p style={{ fontSize:12,color:"#94a3b8",marginBottom:step.conditions?8:0 }}>{step.qty} unidades</p>
-                                    {step.conditions && (
-                                      <div style={{ display:"flex",gap:12,marginBottom:8 }}>
-                                        {step.conditions.temp !== undefined && (
-                                          <span style={{ fontSize:11,color:"#f59e0b",background:"#fffbeb",padding:"2px 8px",borderRadius:20 }}>
-                                            🌡 {step.conditions.temp}°C
-                                          </span>
-                                        )}
-                                        {step.conditions.humidity !== undefined && (
-                                          <span style={{ fontSize:11,color:"#3b82f6",background:"#eff6ff",padding:"2px 8px",borderRadius:20 }}>
-                                            💧 {step.conditions.humidity}%
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                    {step.txHash && (
-                                      <a href={polyUrl(step.txHash)} target="_blank" rel="noopener noreferrer"
-                                        style={{ display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#3b82f6",textDecoration:"none",background:"#dbeafe",padding:"3px 8px",borderRadius:6 }}>
-                                        <ExternalLink size={10} /> {step.txHash.slice(0,10)}...{step.txHash.slice(-6)}
-                                      </a>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              );
-                            })}
-                            {/* Ponto GPS atual */}
-                            {gps && (
-                              <div style={{ display:"flex",gap:16,paddingLeft:8 }}>
-                                <div style={{ width:24,height:24,borderRadius:"50%",background:"#10b981",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:1,marginTop:4,boxShadow:"0 0 0 4px rgba(16,185,129,.2)" }}>
-                                  <MapPin size={13} color="white" />
-                                </div>
-                                <div style={{ flex:1,background:"#f0fdf4",border:"1px solid #a7f3d0",borderRadius:12,padding:14 }}>
-                                  <span style={{ background:"#d1fae5",color:"#065f46",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20 }}>VOCÊ ESTÁ AQUI</span>
-                                  <p style={{ fontSize:13,color:"#374151",marginTop:8,marginBottom:4 }}>Leitura realizada agora neste dispositivo</p>
-                                  <p style={{ fontSize:11,fontFamily:"monospace",color:"#059669" }}>{gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}</p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ textAlign:"center",padding:32,color:"#94a3b8",background:"#f8fafc",borderRadius:12 }}>
-                            <Package size={32} style={{ margin:"0 auto 8px",display:"block" }} />
-                            <p>Nenhuma movimentação registrada para este produto ainda.</p>
-                          </div>
-                        )}
-
-                        {/* Botoes */}
-                        <div style={{ display:"flex",gap:10,marginTop:24 }}>
-                          <button onClick={() => { setScanStep("camera"); setTrack(null); setDetected(false); setTimeout(startCamera,200); }}
-                            style={{ flex:1,padding:"11px",background:"#f1f5f9",border:"none",borderRadius:10,fontSize:14,fontWeight:600,cursor:"pointer",color:"#374151" }}>
-                            Escanear outro
-                          </button>
-                          <button onClick={closeScanner}
-                            style={{ flex:1,padding:"11px",background:"linear-gradient(135deg,#0a1628,#1e3a8a)",border:"none",borderRadius:10,fontSize:14,fontWeight:600,cursor:"pointer",color:"white" }}>
-                            Fechar
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── MODAL TERMOS/ETC ── */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-            style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}
-            onClick={() => setModal(false)}>
-            <motion.div initial={{ scale:.9 }} animate={{ scale:1 }} exit={{ scale:.9 }} onClick={e => e.stopPropagation()}
-              style={{ background:"white",borderRadius:20,padding:40,maxWidth:520,width:"100%",maxHeight:"80vh",overflowY:"auto" }}>
-              <div style={{ display:"flex",justifyContent:"space-between",marginBottom:20 }}>
-                <h3 style={{ fontSize:20,fontWeight:700,color:"#0a1628" }}>{modalContent[modalType].title}</h3>
-                <button onClick={() => setModal(false)} style={{ background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:18 }}>×</button>
-              </div>
-              <p style={{ color:"#475569",fontSize:14,lineHeight:1.8,whiteSpace:"pre-line" }}>{modalContent[modalType].body}</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
