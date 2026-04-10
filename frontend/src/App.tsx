@@ -10,10 +10,13 @@ import Inventory     from "./pages/Inventory";
 import Explorer      from "./pages/Explorer";
 import Prescriptions from "./pages/Prescriptions";
 import Users         from "./pages/Users";
+import Terms         from "./pages/Terms";
+import Privacy       from "./pages/Privacy";
+import Contact       from "./pages/Contact";
 import { useAuthStore } from "./store/auth";
 
 const qc = new QueryClient({
-  defaultOptions: { queries: { staleTime:30_000, retry:1 } }
+  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } }
 });
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -26,21 +29,25 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/login"   element={<Login />} />
+          <Route path="/terms"   element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-            <Route index          element={<Dashboard />} />
+            <Route index element={<Navigate to="/about" replace />} />
             <Route path="about"         element={<About />} />
+            <Route path="dashboard"     element={<Dashboard />} />
             <Route path="batches"       element={<Batches />} />
             <Route path="inventory"     element={<Inventory />} />
-            <Route path="explorer"      element={<Explorer />} />
             <Route path="prescriptions" element={<Prescriptions />} />
+            <Route path="explorer"      element={<Explorer />} />
             <Route path="users"         element={<Users />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right"
-        toastOptions={{ style:{ borderRadius:10, fontSize:14 } }}/>
+        toastOptions={{ style: { borderRadius: 10, fontSize: 14 } }} />
     </QueryClientProvider>
   );
 }

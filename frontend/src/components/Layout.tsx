@@ -7,20 +7,14 @@ import {
 import { useAuthStore } from "../store/auth";
 
 const NAV = [
-  { to:"/about",     icon:Info,            label:"PharmaChain"  },
-  { to:"/",          icon:LayoutDashboard, label:"Dashboard"    },
-  { to:"/batches",   icon:Package,         label:"Lotes"        },
-  { to:"/inventory", icon:Warehouse,       label:"Estoque"      },
-  { to:"/rx",        icon:FileText,        label:"Receitas"     },
-  { to:"/explorer",  icon:Activity,        label:"Blockchain"   },
-  { to:"/users",     icon:Users,           label:"Participantes"},
+  { to:"/about",         icon:Info,            label:"PharmaChain"  },
+  { to:"/dashboard",     icon:LayoutDashboard, label:"Dashboard"    },
+  { to:"/batches",       icon:Package,         label:"Lotes"        },
+  { to:"/inventory",     icon:Warehouse,       label:"Estoque"      },
+  { to:"/prescriptions", icon:FileText,        label:"Receitas"     },
+  { to:"/explorer",      icon:Activity,        label:"Blockchain"   },
+  { to:"/users",         icon:Users,           label:"Participantes"},
 ];
-
-const activeStyle = {
-  background: "rgba(0,113,227,0.10)",
-  color:      "var(--accent)",
-  fontWeight: 600,
-};
 
 export default function Layout() {
   const { role, logout } = useAuthStore();
@@ -43,7 +37,7 @@ export default function Layout() {
         }}
       >
         {/* Logo */}
-        <div style={{ display:"flex", alignItems:"center", gap:9, marginRight:24 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:9, marginRight:20 }}>
           <div style={{
             width:30, height:30, borderRadius:8,
             background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",
@@ -57,9 +51,9 @@ export default function Layout() {
         {/* Nav links */}
         <div style={{ display:"flex", alignItems:"center", gap:2, flex:1 }}>
           {NAV.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to==="/"} style={({ isActive }) => ({
+            <NavLink key={to} to={to} style={({ isActive }) => ({
               display:"flex", alignItems:"center", gap:6,
-              padding:"6px 12px", borderRadius:8, fontSize:13,
+              padding:"6px 11px", borderRadius:8, fontSize:13,
               color: isActive ? "white" : "rgba(255,255,255,0.6)",
               textDecoration:"none", transition:"all 0.15s",
               background: isActive ? "rgba(59,130,246,0.2)" : "transparent",
@@ -71,9 +65,9 @@ export default function Layout() {
         </div>
 
         {/* Right side */}
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:6,
-            background:"rgba(16,185,129,0.15)", padding:"4px 12px", borderRadius:20 }}>
+            background:"rgba(16,185,129,0.15)", padding:"4px 10px", borderRadius:20 }}>
             <Wifi size={12} color="#10b981"/>
             <span style={{ fontSize:11, color:"#10b981", fontWeight:500 }}>Polygon Amoy</span>
           </div>
@@ -85,7 +79,7 @@ export default function Layout() {
             display:"flex", alignItems:"center", gap:6,
             border:"none", background:"rgba(255,255,255,0.08)", cursor:"pointer",
             color:"rgba(255,255,255,0.7)", fontSize:13, borderRadius:8,
-            padding:"6px 12px", transition:"background 0.15s"
+            padding:"6px 10px"
           }}>
             <LogOut size={14}/> Sair
           </button>
@@ -93,16 +87,16 @@ export default function Layout() {
       </motion.header>
 
       {/* ── Main ── */}
-      <main style={{ flex:1, padding:"36px 40px", background:"var(--bg)", overflowY:"auto" }}>
+      <main style={{ flex:1, padding:"36px 40px", background:"var(--bg)" }}>
         <Outlet />
       </main>
 
       {/* ── Footer ── */}
       <footer style={{
         background:"#020817", borderTop:"1px solid rgba(255,255,255,0.06)",
-        padding:"16px 40px", display:"flex", alignItems:"center", justifyContent:"center"
+        padding:"14px 40px", textAlign:"center"
       }}>
-        <p style={{ color:"#475569", fontSize:12, textAlign:"center" }}>
+        <p style={{ color:"#475569", fontSize:12 }}>
           Copyright © 2026 PharmaChain. Todos os direitos reservados. Matheus Augusto Roseira Santana · Salvador, Bahia.
         </p>
       </footer>
