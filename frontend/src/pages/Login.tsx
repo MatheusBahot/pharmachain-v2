@@ -1,40 +1,20 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import axios from "axios";
 import { api } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
-
-interface TrackStep {
-  type: string; date: string; from: string; to: string;
-  qty: number; txHash: string;
-  conditions?: { temp: number; humidity?: number };
-}
-interface TrackResult {
-  productName: string; gtin: string; lot: string;
-  status: string; expiryDate: string; manufacturer: string;
-  steps: TrackStep[];
-}
-
-const STEP_LABEL: Record<string,string> = {
-  DISTRIBUTE:"Distribuição", RECEIVE:"Recebimento",
-  DISPENSE:"Dispensação", RETURN:"Devolução", MANUFACTURE:"Fabricação"
-};
-const STEP_COLOR: Record<string,string> = {
-  DISTRIBUTE:"#3b82f6", RECEIVE:"#16A34A",
-  DISPENSE:"#f59e0b", RETURN:"#ef4444", MANUFACTURE:"#8b5cf6"
-};
+const IMGS = [
+  { url:"https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&q=80", label:"Rastreabilidade de ponta a ponta" },
+  { url:"https://images.unsplash.com/photo-1576671081837-49000212a370?w=500&q=80", label:"Conformidade ANVISA" },
+  { url:"https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=500&q=80",   label:"Blockchain farmacêutico" },
+  { url:"https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=500&q=80", label:"Cadeia do frio monitorada" },
+];
 
 export default function Login() {
   const [cnpj, setCnpj]         = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading]   = useState(false);
-  const [gtin, setGtin]         = useState("");
-  const [tracking, setTracking] = useState(false);
-  const [result, setResult]     = useState<TrackResult|null>(null);
-  const [trackErr, setTrackErr] = useState("");
   const navigate = useNavigate();
   const login    = useAuthStore(s => s.login);
 
@@ -45,7 +25,7 @@ export default function Login() {
       const { data } = await api.post("/auth/login", { cnpj, password });
       login(data.token, data.role, data.address, data.participantId);
       toast.success("Bem-vindo ao PharmaChain");
-      navigate("/dashboard");
+      navigate("/about");
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? "Erro ao autenticar");
     } finally {
@@ -53,215 +33,270 @@ export default function Login() {
     }
   }
 
-  async function handleTrack(e: React.FormEvent) {
-    e.preventDefault();
-    if (!gtin.trim()) return;
-    setTracking(true); setResult(null); setTrackErr("");
-    try {
-      const { data } = await axios.get(`${BASE}/consumer/track/${gtin.trim()}`);
-      setResult(data);
-    } catch (err: any) {
-      setTrackErr(err.response?.data?.error ?? "Produto não encontrado na blockchain.");
-    } finally {
-      setTracking(false);
-    }
-  }
-
-  const G   = "#16A34A";
-  const GL  = "#DCFCE7";
-  const GD  = "#14532D";
-  const BG  = "#F0FAF4";
-  const TX  = "#0F2417";
-  const TX2 = "#4B6B58";
-  const BD  = "rgba(22,163,74,0.18)";
-
   return (
-    <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", background:BG, minHeight:"100vh" }}>
+    <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", background:"#F0FAF4", minHeight:"100vh" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        * { margin:0; padding:0; box-sizing:border-box; }
-        html { scroll-behavior:smooth; }
-        .nk { color:${TX2}; text-decoration:none; font-size:13px; font-weight:500; opacity:.8; transition:opacity .2s; }
-        .nk:hover { opacity:1; color:${G}; }
-        .s { padding:80px 24px; }
-        .c { max-width:1080px; margin:0 auto; }
-        .tag { display:inline-block; background:${GL}; color:${GD}; font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; margin-bottom:14px; letter-spacing:.6px; text-transform:uppercase; }
-        .fc { background:white; border-radius:18px; padding:28px; border:1px solid ${BD}; transition:transform .2s,box-shadow .2s; }
-        .fc:hover { transform:translateY(-3px); box-shadow:0 16px 40px rgba(22,163,74,0.1); }
-        .inp { width:100%; padding:12px 16px; border:1.5px solid ${BD}; border-radius:10px; font-size:14px; font-family:'Plus Jakarta Sans',sans-serif; outline:none; transition:border-color .2s,box-shadow .2s; background:${BG}; color:${TX}; }
-        .inp:focus { border-color:${G}; background:white; box-shadow:0 0 0 3px rgba(22,163,74,0.1); }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+        html { scroll-behavior:smooth; font-size:16px; }
+        body { -webkit-font-smoothing:antialiased; }
+        .nk { color:#0F2417; text-decoration:none; font-size:0.8125rem; font-weight:500; opacity:.65; transition:opacity .2s; white-space:nowrap; }
+        .nk:hover { opacity:1; }
+        .sec { padding:5.5rem 1.5rem; }
+        .wrap { max-width:68rem; margin:0 auto; }
+        .tag { display:inline-block; background:#DCFCE7; color:#15803D; font-size:0.6875rem; font-weight:700; padding:0.25rem 0.75rem; border-radius:999px; margin-bottom:0.875rem; letter-spacing:0.06em; text-transform:uppercase; }
+        .fc { background:white; border-radius:1.125rem; padding:1.75rem; border:1px solid rgba(22,163,74,.1); transition:transform .2s,box-shadow .2s; }
+        .fc:hover { transform:translateY(-3px); box-shadow:0 1.25rem 3rem rgba(22,163,74,.1); }
+        .inp { width:100%; padding:0.75rem 1rem; border:1.5px solid rgba(22,163,74,.18); border-radius:0.625rem; font-size:0.9375rem; font-family:'Plus Jakarta Sans',sans-serif; outline:none; transition:border-color .2s,box-shadow .2s; background:#F0FAF4; color:#0F2417; }
+        .inp:focus { border-color:#16A34A; background:white; box-shadow:0 0 0 3px rgba(22,163,74,.1); }
+        .ic { border-radius:1.125rem; overflow:hidden; position:relative; height:11rem; background:#0F2417; }
+        .ic img { width:100%; height:100%; object-fit:cover; opacity:.82; transition:opacity .3s; }
+        .ic:hover img { opacity:.95; }
+        .ic-lbl { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent,rgba(0,0,0,.72)); padding:0.75rem 1rem; color:white; font-size:0.75rem; font-weight:600; }
+        .sc { text-align:center; padding:1.75rem 1.25rem; background:white; border-radius:1rem; border:1px solid rgba(22,163,74,.1); }
       `}</style>
 
-      {/* NAVBAR */}
-      <nav style={{
-        position:"fixed", top:0, left:0, right:0, zIndex:100,
-        background:"rgba(240,250,244,0.96)", backdropFilter:"blur(16px)",
-        borderBottom:"1px solid " + BD,
-        boxShadow:"0 2px 16px rgba(22,163,74,0.07)"
-      }}>
-        <div style={{ maxWidth:1080, margin:"0 auto", padding:"0 24px",
-          height:62, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:36, height:36, background:"linear-gradient(135deg,#16A34A,#4ADE80)",
-              borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:18, boxShadow:"0 4px 12px rgba(22,163,74,0.25)" }}>💊</div>
-            <span style={{ color:TX, fontWeight:800, fontSize:16, letterSpacing:"-0.4px" }}>PharmaChain</span>
+      {/* ── NAVBAR ── */}
+      <nav style={{ position:"fixed", top:0, left:0, right:0, zIndex:100,
+        background:"rgba(255,255,255,0.94)", backdropFilter:"blur(16px)",
+        borderBottom:"1px solid rgba(22,163,74,0.1)",
+        boxShadow:"0 2px 20px rgba(22,163,74,0.05)" }}>
+        <div style={{ maxWidth:"68rem", margin:"0 auto", padding:"0 1.5rem",
+          height:"3.875rem", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+
+          {/* Logo */}
+          <div style={{ display:"flex", alignItems:"center", gap:"0.625rem" }}>
+            <div style={{ fontSize:"1.875rem", lineHeight:1 }}>🦾</div>
+            <span style={{ color:"#0F2417", fontWeight:800, fontSize:"1rem", letterSpacing:"-0.025em" }}>
+              PharmaChain
+            </span>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:24 }}>
+
+          {/* Links */}
+          <div style={{ display:"flex", alignItems:"center", gap:"1.5rem" }}>
             <Link to="/terms"   className="nk">Termos de Uso</Link>
             <Link to="/privacy" className="nk">Política de Privacidade</Link>
             <Link to="/contact" className="nk">Fale Conosco</Link>
-            <a href="#rastrear" style={{
-              background:"linear-gradient(135deg,#16A34A,#15803D)",
-              color:"white", padding:"9px 22px", borderRadius:10, fontSize:13,
-              fontWeight:700, textDecoration:"none",
-              boxShadow:"0 4px 12px rgba(22,163,74,0.25)"
-            }}>Rastrear</a>
+            <Link to="/track" style={{ color:"#16A34A", textDecoration:"none",
+              fontSize:"0.8125rem", fontWeight:600, opacity:1 }}>
+              Rastrear
+            </Link>
+            <a href="#login" style={{ background:"linear-gradient(135deg,#16A34A,#15803D)",
+              color:"white", padding:"0.5rem 1.25rem", borderRadius:"0.625rem",
+              fontSize:"0.8125rem", fontWeight:700, textDecoration:"none",
+              boxShadow:"0 4px 12px rgba(22,163,74,0.28)" }}>
+              Login
+            </a>
           </div>
         </div>
       </nav>
 
-      {/* HERO */}
-      <section style={{
-        minHeight:"100vh", background:BG,
-        display:"flex", alignItems:"center",
-        padding:"0 24px", paddingTop:62
-      }}>
-        <div style={{ maxWidth:1080, margin:"0 auto", width:"100%",
-          display:"flex", gap:64, alignItems:"center" }}>
+      {/* ── HERO ── */}
+      <section style={{ minHeight:"100vh",
+        background:"linear-gradient(160deg,#0F2417 0%,#14532D 55%,#166534 100%)",
+        display:"flex", alignItems:"center", padding:"0 1.5rem", paddingTop:"3.875rem",
+        position:"relative", overflow:"hidden" }}>
 
+        {/* Decorativos */}
+        <div style={{ position:"absolute", top:"-5rem", right:"-5rem", width:"31rem", height:"31rem",
+          borderRadius:"50%", background:"radial-gradient(circle,rgba(74,222,128,0.11) 0%,transparent 70%)",
+          pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", bottom:"-3.75rem", left:"-3.75rem", width:"23.75rem", height:"23.75rem",
+          borderRadius:"50%", background:"radial-gradient(circle,rgba(22,163,74,0.14) 0%,transparent 70%)",
+          pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", top:"20%", left:"2%", fontSize:"5.5rem", opacity:.05, pointerEvents:"none" }}>🧬</div>
+        <div style={{ position:"absolute", bottom:"10%", left:"5%", fontSize:"4.5rem", opacity:.04, pointerEvents:"none" }}>🔬</div>
+        <div style={{ position:"absolute", top:"45%", right:"2%", fontSize:"5rem", opacity:.04, pointerEvents:"none" }}>🏥</div>
+
+        <div style={{ maxWidth:"68rem", margin:"0 auto", width:"100%",
+          display:"flex", gap:"4rem", alignItems:"center" }}>
+
+          {/* Texto */}
           <div style={{ flex:1 }}>
-            <h1 style={{ color:TX, fontSize:50, fontWeight:800, lineHeight:1.1,
-              letterSpacing:"-1.5px", marginBottom:18 }}>
+            <div style={{ display:"inline-flex", alignItems:"center", gap:"0.5rem",
+              background:"rgba(74,222,128,0.14)", border:"1px solid rgba(74,222,128,0.28)",
+              borderRadius:"999px", padding:"0.375rem 1rem", marginBottom:"1.5rem" }}>
+              <div style={{ width:"0.4375rem", height:"0.4375rem", borderRadius:"50%",
+                background:"#4ADE80", boxShadow:"0 0 8px #4ADE80" }}/>
+              <span style={{ color:"#4ADE80", fontSize:"0.75rem", fontWeight:600 }}>
+                Rede Blockchain Ativa — Polygon Amoy
+              </span>
+            </div>
+
+            <h1 style={{ color:"white", fontSize:"clamp(2rem,4vw,3.25rem)", fontWeight:800,
+              lineHeight:1.08, letterSpacing:"-0.04em", marginBottom:"1.25rem" }}>
               Rastreabilidade<br/>
-              <span style={{ color:G }}>Farmacêutica</span><br/>
+              <span style={{ color:"#4ADE80" }}>Farmacêutica</span><br/>
               em Blockchain
             </h1>
-            <p style={{ color:TX2, fontSize:16, lineHeight:1.8, marginBottom:32, maxWidth:460 }}>
+
+            <p style={{ color:"rgba(255,255,255,0.62)", fontSize:"1.0625rem", lineHeight:1.8,
+              marginBottom:"2.25rem", maxWidth:"28rem" }}>
               Controle total da cadeia logística de medicamentos — do fabricante à farmácia —
               com rastreabilidade imutável, conformidade ANVISA e inteligência em tempo real.
             </p>
-            <div style={{ display:"flex", gap:28, marginBottom:36 }}>
+
+            {/* Stats */}
+            <div style={{ display:"flex", gap:"2rem", marginBottom:"2.25rem" }}>
               {[
                 { num:"100%", label:"Rastreabilidade" },
                 { num:"< 2s", label:"Registro blockchain" },
                 { num:"24/7", label:"Disponibilidade" },
               ].map((s, i) => (
                 <div key={i}>
-                  <p style={{ color:G, fontSize:26, fontWeight:800, marginBottom:2 }}>{s.num}</p>
-                  <p style={{ color:TX2, fontSize:12 }}>{s.label}</p>
+                  <p style={{ color:"#4ADE80", fontSize:"1.625rem", fontWeight:800, marginBottom:"0.125rem",
+                    letterSpacing:"-0.03em" }}>{s.num}</p>
+                  <p style={{ color:"rgba(255,255,255,0.48)", fontSize:"0.8125rem" }}>{s.label}</p>
                 </div>
               ))}
             </div>
-            <div style={{ display:"flex", gap:12 }}>
-              <a href="#sobre" style={{
-                display:"inline-block",
-                background:"linear-gradient(135deg,#16A34A,#15803D)",
-                color:"white", padding:"13px 28px", borderRadius:11,
-                fontWeight:700, textDecoration:"none", fontSize:14,
-                boxShadow:"0 6px 20px rgba(22,163,74,0.3)"
-              }}>Conheça o Projeto</a>
-              <a href="#rastrear" style={{
-                display:"inline-block",
-                background:"white", border:"1.5px solid " + BD,
-                color:GD, padding:"13px 28px", borderRadius:11,
-                fontWeight:700, textDecoration:"none", fontSize:14,
-              }}>📦 Rastrear Medicamento</a>
+
+            <div style={{ display:"flex", gap:"0.75rem" }}>
+              <a href="#sobre" style={{ background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+                color:"white", padding:"0.8125rem 1.75rem", borderRadius:"0.6875rem",
+                fontWeight:700, textDecoration:"none", fontSize:"0.9375rem",
+                boxShadow:"0 8px 24px rgba(22,163,74,0.38)" }}>
+                Conheça o Projeto
+              </a>
+              <a href="#login" style={{ background:"rgba(255,255,255,0.09)", color:"white",
+                padding:"0.8125rem 1.75rem", borderRadius:"0.6875rem", fontWeight:600,
+                textDecoration:"none", fontSize:"0.9375rem",
+                border:"1px solid rgba(255,255,255,0.18)" }}>
+                Acessar Sistema
+              </a>
             </div>
           </div>
 
-          {/* LOGIN CARD */}
-          <div id="login" style={{ width:380, flexShrink:0 }}>
-            <div style={{
-              background:"white", borderRadius:24, padding:40,
-              boxShadow:"0 24px 64px rgba(22,163,74,0.13), 0 1px 0 " + BD,
-              border:"1px solid " + BD
-            }}>
-              <div style={{ textAlign:"center", marginBottom:28 }}>
-                <div style={{ width:54, height:54, borderRadius:16,
-                  background:"linear-gradient(135deg,#16A34A,#4ADE80)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  margin:"0 auto 14px", fontSize:24,
-                  boxShadow:"0 6px 18px rgba(22,163,74,0.3)" }}>💊</div>
-                <h2 style={{ fontSize:20, fontWeight:800, color:TX, marginBottom:4 }}>
+          {/* Login Card */}
+          <div id="login" style={{ width:"23.75rem", flexShrink:0 }}>
+            <div style={{ background:"rgba(255,255,255,0.97)", borderRadius:"1.5rem", padding:"2.5rem",
+              boxShadow:"0 3rem 6rem rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.09)" }}>
+              <div style={{ textAlign:"center", marginBottom:"1.75rem" }}>
+                <div style={{ fontSize:"2.5rem", marginBottom:"0.875rem" }}>🦾</div>
+                <h2 style={{ fontSize:"1.3125rem", fontWeight:800, color:"#0F2417", marginBottom:"0.25rem",
+                  letterSpacing:"-0.025em" }}>
                   Acesso ao Sistema
                 </h2>
-                <p style={{ color:TX2, fontSize:13 }}>Insira suas credenciais para continuar</p>
+                <p style={{ color:"#4B6B58", fontSize:"0.875rem" }}>
+                  Insira suas credenciais para continuar
+                </p>
               </div>
 
-              <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:"0.875rem" }}>
                 <div>
-                  <label style={{ fontSize:11, fontWeight:700, color:TX2,
-                    display:"block", marginBottom:6, letterSpacing:".5px" }}>CNPJ</label>
+                  <label style={{ fontSize:"0.6875rem", fontWeight:700, color:"#4B6B58",
+                    display:"block", marginBottom:"0.375rem", letterSpacing:"0.05em" }}>CNPJ</label>
                   <input className="inp" type="text" placeholder="00.000.000/0001-00"
                     value={cnpj} onChange={e => setCnpj(e.target.value)} required/>
                 </div>
                 <div>
-                  <label style={{ fontSize:11, fontWeight:700, color:TX2,
-                    display:"block", marginBottom:6, letterSpacing:".5px" }}>SENHA</label>
+                  <label style={{ fontSize:"0.6875rem", fontWeight:700, color:"#4B6B58",
+                    display:"block", marginBottom:"0.375rem", letterSpacing:"0.05em" }}>SENHA</label>
                   <input className="inp" type="password" placeholder="••••••••"
                     value={password} onChange={e => setPassword(e.target.value)} required/>
                 </div>
-                <button type="submit" disabled={loading} style={{
-                  marginTop:6, height:46, fontSize:15, width:"100%", fontWeight:700,
-                  background:"linear-gradient(135deg,#15803D,#16A34A)", color:"white",
-                  border:"none", borderRadius:11, cursor: loading ? "not-allowed" : "pointer",
-                  fontFamily:"inherit", boxShadow:"0 6px 18px rgba(22,163,74,0.3)",
-                  opacity: loading ? .7 : 1
-                }}>
+                <button type="submit" disabled={loading}
+                  style={{ marginTop:"0.375rem", height:"2.875rem", fontSize:"0.9375rem", width:"100%",
+                    fontWeight:700, background:"linear-gradient(135deg,#15803D,#16A34A)",
+                    color:"white", border:"none", borderRadius:"0.6875rem", cursor:"pointer",
+                    fontFamily:"inherit", boxShadow:"0 6px 20px rgba(22,163,74,0.32)",
+                    opacity: loading ? .7 : 1, transition:"opacity .2s" }}>
                   {loading ? "Autenticando..." : "Entrar"}
                 </button>
               </form>
 
-              <p style={{ textAlign:"center", fontSize:11, color:"#94a3b8", marginTop:18, lineHeight:1.6 }}>
+              <p style={{ textAlign:"center", fontSize:"0.6875rem", color:"#94a3b8",
+                marginTop:"1.25rem", lineHeight:1.6 }}>
                 Acesso restrito a participantes autorizados<br/>da rede PharmaChain
               </p>
             </div>
-          </div>
 
+            {/* Mini galeria */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.5rem", marginTop:"0.75rem" }}>
+              {IMGS.map((img, i) => (
+                <div key={i} className="ic">
+                  <img src={img.url} alt={img.label}
+                    onError={e => (e.currentTarget.style.display="none")}/>
+                  <div className="ic-lbl">{img.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* SOBRE */}
-      <section id="sobre" className="s" style={{ background:"white" }}>
-        <div className="c">
-          <div style={{ textAlign:"center", marginBottom:48 }}>
-            <span className="tag">Sobre o Projeto</span>
-            <h2 style={{ fontSize:36, fontWeight:800, color:TX, letterSpacing:"-1px", marginBottom:14 }}>
-              O que é o PharmaChain?
+      {/* ── IMAGENS ── */}
+      <section className="sec" style={{ background:"white" }}>
+        <div className="wrap">
+          <div style={{ textAlign:"center", marginBottom:"3rem" }}>
+            <span className="tag">Tecnologia em Ação</span>
+            <h2 style={{ fontSize:"clamp(1.5rem,3vw,2.25rem)", fontWeight:800, color:"#0F2417",
+              letterSpacing:"-0.03em" }}>
+              Inovação na Cadeia Farmacêutica
             </h2>
-            <p style={{ color:TX2, fontSize:16, maxWidth:580, margin:"0 auto", lineHeight:1.8 }}>
-              Plataforma blockchain para garantir integridade e conformidade ANVISA
-              em toda a cadeia logística de medicamentos no Brasil.
-            </p>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20 }}>
-            {[
-              { icon:"🔗", title:"Blockchain Imutável",  desc:"Cada movimentação de lote registrada permanentemente na rede Polygon, à prova de adulteração." },
-              { icon:"🏥", title:"Conformidade ANVISA",  desc:"Atende RDC 204/2017 e demais normativas para rastreabilidade de medicamentos no Brasil." },
-              { icon:"⚡", title:"Tempo Real",           desc:"Monitoramento ao vivo de transferências, alertas de temperatura e dispensação de receitas." },
-            ].map((item, i) => (
-              <div key={i} className="fc">
-                <div style={{ fontSize:34, marginBottom:14 }}>{item.icon}</div>
-                <h3 style={{ fontSize:17, fontWeight:700, color:TX, marginBottom:10 }}>{item.title}</h3>
-                <p style={{ color:TX2, fontSize:14, lineHeight:1.75 }}>{item.desc}</p>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"1rem" }}>
+            {IMGS.map((img, i) => (
+              <div key={i} style={{ borderRadius:"1.25rem", overflow:"hidden", position:"relative",
+                height:"13.75rem", background:"#0F2417",
+                boxShadow:"0 0.75rem 2.5rem rgba(22,163,74,0.13)" }}>
+                <img src={img.url} alt={img.label}
+                  style={{ width:"100%", height:"100%", objectFit:"cover", opacity:.84 }}
+                  onError={e => (e.currentTarget.style.display="none")}/>
+                <div style={{ position:"absolute", inset:0,
+                  background:"linear-gradient(to top,rgba(15,36,23,0.78) 0%,transparent 60%)" }}/>
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"1rem" }}>
+                  <p style={{ color:"white", fontSize:"0.8125rem", fontWeight:600 }}>{img.label}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* BLOCKCHAIN */}
-      <section className="s" style={{ background:BG }}>
-        <div className="c">
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:72, alignItems:"center" }}>
+      {/* ── SOBRE ── */}
+      <section id="sobre" className="sec" style={{ background:"#F0FAF4" }}>
+        <div className="wrap">
+          <div style={{ textAlign:"center", marginBottom:"3.5rem" }}>
+            <span className="tag">Sobre o Projeto</span>
+            <h2 style={{ fontSize:"clamp(1.5rem,3vw,2.375rem)", fontWeight:800, color:"#0F2417",
+              letterSpacing:"-0.03em", marginBottom:"0.875rem" }}>
+              O que é o PharmaChain?
+            </h2>
+            <p style={{ color:"#4B6B58", fontSize:"1rem", maxWidth:"36rem",
+              margin:"0 auto", lineHeight:1.8 }}>
+              Plataforma blockchain para garantir integridade e conformidade ANVISA
+              em toda a cadeia logística de medicamentos no Brasil.
+            </p>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"1.25rem" }}>
+            {[
+              { icon:"🔗", title:"Blockchain Imutável",  desc:"Cada movimentação de lote registrada permanentemente na rede Polygon, à prova de adulteração." },
+              { icon:"🏥", title:"Conformidade ANVISA",  desc:"Atende RDC 204/2017 e demais normativas para rastreabilidade de medicamentos no Brasil." },
+              { icon:"⚡", title:"Tempo Real",           desc:"Monitoramento ao vivo de transferências, alertas de temperatura e dispensação de receitas." },
+            ].map((item, i) => (
+              <div key={i} className="fc">
+                <div style={{ fontSize:"2.25rem", marginBottom:"1rem" }}>{item.icon}</div>
+                <h3 style={{ fontSize:"1.0625rem", fontWeight:700, color:"#0F2417", marginBottom:"0.625rem",
+                  letterSpacing:"-0.02em" }}>{item.title}</h3>
+                <p style={{ color:"#4B6B58", fontSize:"0.9375rem", lineHeight:1.75 }}>{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── BLOCKCHAIN ── */}
+      <section className="sec" style={{ background:"white" }}>
+        <div className="wrap">
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4.5rem", alignItems:"center" }}>
             <div>
               <span className="tag">Tecnologia</span>
-              <h2 style={{ fontSize:34, fontWeight:800, color:TX, letterSpacing:"-1px",
-                marginBottom:14, lineHeight:1.2 }}>
+              <h2 style={{ fontSize:"clamp(1.375rem,2.5vw,2.25rem)", fontWeight:800, color:"#0F2417",
+                letterSpacing:"-0.03em", marginBottom:"0.875rem", lineHeight:1.2 }}>
                 Inteligência Blockchain conectada à Logística Farmacêutica
               </h2>
-              <p style={{ color:TX2, fontSize:15, lineHeight:1.8, marginBottom:22 }}>
+              <p style={{ color:"#4B6B58", fontSize:"0.9375rem", lineHeight:1.8, marginBottom:"1.375rem" }}>
                 Smart contracts automatizam aprovações, alertas e recalls. Cada lote tem registro
                 único, verificável e permanente na rede Polygon Amoy.
               </p>
@@ -271,19 +306,21 @@ export default function Login() {
                 "Hash SHA-256 para validação de dados",
                 "Rede pública — sem servidor central",
               ].map((item, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                  <div style={{ width:22, height:22, borderRadius:"50%", background:GL,
-                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ fontSize:11, color:G, fontWeight:700 }}>✓</span>
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:"0.625rem", marginBottom:"0.625rem" }}>
+                  <div style={{ width:"1.375rem", height:"1.375rem", borderRadius:"50%",
+                    background:"#DCFCE7", display:"flex", alignItems:"center",
+                    justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontSize:"0.6875rem", color:"#16A34A", fontWeight:700 }}>✓</span>
                   </div>
-                  <span style={{ fontSize:14, color:"#374151" }}>{item}</span>
+                  <span style={{ fontSize:"0.9375rem", color:"#374151" }}>{item}</span>
                 </div>
               ))}
             </div>
+
             <div style={{ background:"linear-gradient(135deg,#0F2417,#14532D)",
-              borderRadius:22, padding:36, color:"white" }}>
-              <p style={{ fontSize:11, color:"#4ADE80", fontWeight:700, marginBottom:20,
-                letterSpacing:"1.5px" }}>FLUXO DE RASTREABILIDADE</p>
+              borderRadius:"1.375rem", padding:"2.25rem", color:"white" }}>
+              <p style={{ fontSize:"0.6875rem", color:"#4ADE80", fontWeight:700, marginBottom:"1.25rem",
+                letterSpacing:"0.1em" }}>FLUXO DE RASTREABILIDADE</p>
               {[
                 { step:"01", label:"Fabricante registra lote",  sub:"GTIN-14 + hash SHA-256 → blockchain" },
                 { step:"02", label:"Distribuidor recebe",        sub:"Assinatura ECDSA + NF-e validada" },
@@ -291,15 +328,17 @@ export default function Login() {
                 { step:"04", label:"Médico emite receita",       sub:"Criptografada AES-256 + LGPD" },
                 { step:"05", label:"Paciente retira",            sub:"Dispensação registrada na blockchain" },
               ].map((item, i) => (
-                <div key={i} style={{ display:"flex", gap:14, marginBottom:i<4?18:0, alignItems:"flex-start" }}>
-                  <div style={{ width:32, height:32, borderRadius:9,
+                <div key={i} style={{ display:"flex", gap:"0.875rem",
+                  marginBottom:i<4?"1.125rem":"0", alignItems:"flex-start" }}>
+                  <div style={{ width:"2rem", height:"2rem", borderRadius:"0.5625rem",
                     background:"rgba(74,222,128,0.18)", display:"flex", alignItems:"center",
-                    justifyContent:"center", fontSize:11, fontWeight:700, color:"#4ADE80", flexShrink:0 }}>
+                    justifyContent:"center", fontSize:"0.6875rem", fontWeight:700,
+                    color:"#4ADE80", flexShrink:0 }}>
                     {item.step}
                   </div>
                   <div>
-                    <p style={{ fontSize:14, fontWeight:600, marginBottom:2 }}>{item.label}</p>
-                    <p style={{ fontSize:12, color:"rgba(255,255,255,0.45)" }}>{item.sub}</p>
+                    <p style={{ fontSize:"0.9375rem", fontWeight:600, marginBottom:"0.125rem" }}>{item.label}</p>
+                    <p style={{ fontSize:"0.8125rem", color:"rgba(255,255,255,0.42)" }}>{item.sub}</p>
                   </div>
                 </div>
               ))}
@@ -308,212 +347,55 @@ export default function Login() {
         </div>
       </section>
 
-      {/* ── RASTREADOR PÚBLICO ── */}
-      <section id="rastrear" className="s" style={{ background:"white" }}>
-        <div className="c">
-          <div style={{ textAlign:"center", marginBottom:48 }}>
-            <span className="tag">Para o Consumidor</span>
-            <h2 style={{ fontSize:36, fontWeight:800, color:TX, letterSpacing:"-1px", marginBottom:14 }}>
-              Verifique a origem do seu medicamento
-            </h2>
-            <p style={{ color:TX2, fontSize:16, maxWidth:560, margin:"0 auto", lineHeight:1.8 }}>
-              Escaneie o QR Code da embalagem ou digite o código GTIN para consultar
-              todo o histórico de movimentação na blockchain — sem precisar de login.
-            </p>
-          </div>
-
-          {/* Campo de busca */}
-          <div style={{ maxWidth:580, margin:"0 auto 40px" }}>
-            <form onSubmit={handleTrack} style={{ display:"flex", gap:10 }}>
-              <input
-                className="inp"
-                placeholder="Digite o GTIN ou escaneie o QR Code da embalagem"
-                value={gtin}
-                onChange={e => { setGtin(e.target.value); setResult(null); setTrackErr(""); }}
-              />
-              <button type="submit" disabled={tracking} style={{
-                flexShrink:0, padding:"0 24px", height:48,
-                background:"linear-gradient(135deg,#16A34A,#15803D)",
-                color:"white", border:"none", borderRadius:10,
-                fontSize:14, fontWeight:700, cursor: tracking ? "not-allowed" : "pointer",
-                fontFamily:"inherit", opacity: tracking ? .7 : 1,
-                boxShadow:"0 4px 14px rgba(22,163,74,0.3)"
-              }}>
-                {tracking ? "Buscando..." : "Rastrear"}
-              </button>
-            </form>
-            <p style={{ fontSize:11, color:"#94a3b8", marginTop:10, textAlign:"center" }}>
-              O GTIN está impresso na embalagem do medicamento ou no QR Code
-            </p>
-          </div>
-
-          {/* Erro */}
-          {trackErr && (
-            <div style={{ maxWidth:700, margin:"0 auto 24px",
-              background:"#fef2f2", border:"1px solid #fecaca",
-              borderRadius:14, padding:"16px 20px",
-              display:"flex", alignItems:"center", gap:12 }}>
-              <span style={{ fontSize:20 }}>⚠️</span>
-              <p style={{ fontSize:14, color:"#b91c1c" }}>{trackErr}</p>
-            </div>
-          )}
-
-          {/* Resultado */}
-          {result && (
-            <div style={{ maxWidth:700, margin:"0 auto" }}>
-
-              {/* Card do produto */}
-              <div style={{ background:"linear-gradient(135deg,#0F2417,#14532D)",
-                borderRadius:20, padding:28, color:"white", marginBottom:20 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ADE80" }}/>
-                  <span style={{ fontSize:11, color:"#4ADE80", fontWeight:700, letterSpacing:"1px" }}>
-                    REGISTRADO NA BLOCKCHAIN
-                  </span>
-                </div>
-                <h3 style={{ fontSize:22, fontWeight:800, marginBottom:8 }}>{result.productName}</h3>
-                <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>GTIN: <strong style={{ color:"white" }}>{result.gtin}</strong></span>
-                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Lote: <strong style={{ color:"white" }}>{result.lot}</strong></span>
-                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Fabricante: <strong style={{ color:"white" }}>{result.manufacturer}</strong></span>
-                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Validade: <strong style={{ color:"white" }}>{new Date(result.expiryDate).toLocaleDateString("pt-BR")}</strong></span>
-                  <span style={{ fontSize:12, padding:"2px 10px", borderRadius:20,
-                    background: result.status === "ACTIVE" ? "rgba(74,222,128,0.2)" : "rgba(239,68,68,0.2)",
-                    color: result.status === "ACTIVE" ? "#4ADE80" : "#fca5a5",
-                    fontWeight:700 }}>
-                    {result.status === "ACTIVE" ? "✓ Ativo" : result.status === "RECALLED" ? "⚠ Recall" : result.status}
-                  </span>
-                </div>
-              </div>
-
-              {/* Timeline de steps */}
-              <div style={{ background:"white", borderRadius:16, border:"1px solid " + BD, overflow:"hidden" }}>
-                <div style={{ padding:"18px 24px", borderBottom:"1px solid " + BD, background:BG }}>
-                  <h4 style={{ fontSize:14, fontWeight:700, color:TX }}>
-                    Histórico de Movimentação — {result.steps.length} registro(s)
-                  </h4>
-                </div>
-                {result.steps.length === 0 ? (
-                  <div style={{ padding:32, textAlign:"center", color:TX2, fontSize:14 }}>
-                    Nenhuma movimentação registrada ainda.
-                  </div>
-                ) : (
-                  <div style={{ padding:"8px 0" }}>
-                    {result.steps.map((step, i) => (
-                      <div key={i} style={{
-                        display:"flex", gap:16, padding:"16px 24px",
-                        borderBottom: i < result.steps.length - 1 ? "1px solid #f1f5f9" : "none",
-                        alignItems:"flex-start"
-                      }}>
-                        {/* Indicador de tipo */}
-                        <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                          <div style={{
-                            width:36, height:36, borderRadius:10,
-                            background: (STEP_COLOR[step.type] ?? "#64748b") + "18",
-                            display:"flex", alignItems:"center", justifyContent:"center",
-                            fontSize:16
-                          }}>
-                            {step.type === "MANUFACTURE" ? "🏭"
-                              : step.type === "DISTRIBUTE" ? "🚚"
-                              : step.type === "RECEIVE"    ? "📥"
-                              : step.type === "DISPENSE"   ? "💊"
-                              : "↩️"}
-                          </div>
-                          {i < result.steps.length - 1 && (
-                            <div style={{ width:2, height:24, background:"#e2e8f0", borderRadius:1 }}/>
-                          )}
-                        </div>
-
-                        {/* Conteúdo */}
-                        <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
-                            <span style={{
-                              fontSize:11, fontWeight:700, padding:"2px 9px", borderRadius:20,
-                              background: (STEP_COLOR[step.type] ?? "#64748b") + "18",
-                              color: STEP_COLOR[step.type] ?? "#64748b"
-                            }}>
-                              {STEP_LABEL[step.type] ?? step.type}
-                            </span>
-                            <span style={{ fontSize:11, color:"#94a3b8" }}>
-                              {new Date(step.date).toLocaleString("pt-BR")}
-                            </span>
-                          </div>
-                          <p style={{ fontSize:13, color:TX, marginBottom:2 }}>
-                            <strong>{step.from}</strong>
-                            <span style={{ color:TX2 }}> → </span>
-                            <strong>{step.to}</strong>
-                          </p>
-                          <p style={{ fontSize:12, color:TX2 }}>
-                            Quantidade: {step.qty} un.
-                            {step.conditions && ` · Temp: ${step.conditions.temp}°C`}
-                            {step.conditions?.humidity && ` · Umidade: ${step.conditions.humidity}%`}
-                          </p>
-                          {step.txHash && (
-                            <a href={`https://amoy.polygonscan.com/tx/${step.txHash}`}
-                              target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize:11, color:G, textDecoration:"none",
-                                display:"inline-flex", alignItems:"center", gap:4, marginTop:4 }}>
-                              🔗 {step.txHash.slice(0,10)}...{step.txHash.slice(-6)} — ver na blockchain
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="s" style={{ background:GL }}>
-        <div className="c" style={{ textAlign:"center" }}>
-          <span className="tag">Logística Farmacêutica</span>
-          <h2 style={{ fontSize:40, fontWeight:800, color:TX, letterSpacing:"-1px", marginBottom:16 }}>
+      {/* ── CTA ── */}
+      <section className="sec" style={{ background:"linear-gradient(135deg,#0F2417,#14532D)" }}>
+        <div className="wrap" style={{ textAlign:"center" }}>
+          <span style={{ display:"inline-block", background:"rgba(74,222,128,0.14)",
+            color:"#4ADE80", fontSize:"0.6875rem", fontWeight:700, padding:"0.25rem 0.875rem",
+            borderRadius:"999px", marginBottom:"1.5rem", letterSpacing:"0.08em",
+            textTransform:"uppercase" }}>
+            Logística Farmacêutica
+          </span>
+          <h2 style={{ fontSize:"clamp(1.75rem,4vw,2.75rem)", fontWeight:800, color:"white",
+            letterSpacing:"-0.04em", marginBottom:"1rem" }}>
             Cuidamos da sua Logística
           </h2>
-          <p style={{ color:TX2, fontSize:16, maxWidth:500, margin:"0 auto 36px", lineHeight:1.8 }}>
+          <p style={{ color:"rgba(255,255,255,0.58)", fontSize:"1.0625rem", maxWidth:"31.25rem",
+            margin:"0 auto 2.25rem", lineHeight:1.8 }}>
             Do registro na fábrica à dispensação na farmácia — cada etapa rastreada,
             verificada e registrada permanentemente na blockchain.
           </p>
-          <a href="#login" style={{
-            display:"inline-block",
-            background:"linear-gradient(135deg,#16A34A,#15803D)",
-            color:"white", padding:"14px 36px", borderRadius:13,
-            fontWeight:800, textDecoration:"none", fontSize:15,
-            boxShadow:"0 10px 28px rgba(22,163,74,0.3)"
-          }}>
-            Acessar o Sistema
+          <a href="#login" style={{ display:"inline-block",
+            background:"linear-gradient(135deg,#16A34A,#4ADE80)",
+            color:"white", padding:"0.9375rem 2.5rem", borderRadius:"0.8125rem",
+            fontWeight:800, textDecoration:"none", fontSize:"0.9375rem",
+            boxShadow:"0 0.75rem 2rem rgba(22,163,74,0.38)" }}>
+            Acessar o Sistema →
           </a>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer style={{ background:"#020F07", padding:"36px 24px" }}>
-        <div className="c">
+      {/* ── FOOTER ── */}
+      <footer style={{ background:"#020F07", padding:"2.25rem 1.5rem" }}>
+        <div className="wrap">
           <div style={{ display:"flex", justifyContent:"space-between",
-            alignItems:"center", flexWrap:"wrap", gap:16 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:30, height:30, background:"linear-gradient(135deg,#16A34A,#4ADE80)",
-                borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>💊</div>
-              <span style={{ color:"white", fontWeight:700, fontSize:14 }}>PharmaChain</span>
+            alignItems:"center", flexWrap:"wrap", gap:"1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.625rem" }}>
+              <div style={{ fontSize:"1.5rem" }}>🦾</div>
+              <span style={{ color:"white", fontWeight:700, fontSize:"0.9375rem" }}>PharmaChain</span>
             </div>
-            <p style={{ color:"#4B6B58", fontSize:12 }}>
+            <p style={{ color:"#374151", fontSize:"0.8125rem" }}>
               Copyright © 2026 PharmaChain. Todos os direitos reservados.
               Matheus Augusto Roseira Santana · Salvador, Bahia.
             </p>
-            <div style={{ display:"flex", gap:20 }}>
-              <Link to="/terms"   style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Termos de Uso</Link>
-              <Link to="/privacy" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Política de Privacidade</Link>
-              <Link to="/contact" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Contato</Link>
+            <div style={{ display:"flex", gap:"1.25rem" }}>
+              <Link to="/terms"   style={{ color:"#4B6B58", fontSize:"0.8125rem", textDecoration:"none" }}>Termos de Uso</Link>
+              <Link to="/privacy" style={{ color:"#4B6B58", fontSize:"0.8125rem", textDecoration:"none" }}>Privacidade</Link>
+              <Link to="/contact" style={{ color:"#4B6B58", fontSize:"0.8125rem", textDecoration:"none" }}>Contato</Link>
             </div>
           </div>
         </div>
       </footer>
-
     </div>
   );
 }
