@@ -5,9 +5,17 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/auth";
 
+const ROLE_LABEL: Record<string, string> = {
+  MANUFACTURER:  "Fabricante",
+  DISTRIBUTOR:   "Distribuidor",
+  PHARMACY:      "Farmácia",
+  DOCTOR:        "Médico",
+  ADMIN:         "Admin",
+};
+
 const NAV = [
   { to:"/about",         icon:Info,            label:"PharmaChain"  },
-  { to:"/",              icon:LayoutDashboard, label:"Dashboard"    },
+  { to:"/dashboard",     icon:LayoutDashboard, label:"Dashboard"    },
   { to:"/batches",       icon:Package,         label:"Lotes"        },
   { to:"/inventory",     icon:Warehouse,       label:"Estoque"      },
   { to:"/prescriptions", icon:FileText,        label:"Receitas"     },
@@ -19,6 +27,7 @@ export default function Layout() {
   const { role, logout } = useAuthStore();
   const navigate = useNavigate();
   function handleLogout() { logout(); navigate("/login"); }
+  const roleLabel = role ? (ROLE_LABEL[role] ?? role) : "";
 
   return (
     <div style={{
@@ -26,7 +35,6 @@ export default function Layout() {
       background:"#F0FAF4", fontFamily:"'Plus Jakarta Sans',sans-serif"
     }}>
 
-      {/* ── Top Navbar ── */}
       <header style={{
         position:"sticky", top:0, zIndex:100,
         background:"rgba(255,255,255,0.95)", backdropFilter:"blur(16px)",
@@ -36,7 +44,6 @@ export default function Layout() {
         padding:"0 28px", height:60, gap:8
       }}>
 
-        {/* Logo */}
         <div style={{ display:"flex", alignItems:"center", gap:9, marginRight:20 }}>
           <div style={{
             width:32, height:32, borderRadius:9,
@@ -49,10 +56,9 @@ export default function Layout() {
           </span>
         </div>
 
-        {/* Nav links */}
         <div style={{ display:"flex", alignItems:"center", gap:2, flex:1 }}>
           {NAV.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to==="/"} style={({ isActive }) => ({
+            <NavLink key={to} to={to} style={({ isActive }) => ({
               display:"flex", alignItems:"center", gap:6,
               padding:"6px 11px", borderRadius:8, fontSize:13,
               color: isActive ? "#16A34A" : "#4B6B58",
@@ -65,7 +71,6 @@ export default function Layout() {
           ))}
         </div>
 
-        {/* Right side */}
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{
             display:"flex", alignItems:"center", gap:6,
@@ -74,11 +79,13 @@ export default function Layout() {
             <Wifi size={12} color="#16A34A"/>
             <span style={{ fontSize:11, color:"#16A34A", fontWeight:600 }}>Polygon Amoy</span>
           </div>
-          <span style={{
-            background:"#F0FAF4", color:"#16A34A",
-            border:"1px solid rgba(22,163,74,0.2)",
-            fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20
-          }}>{role}</span>
+          {roleLabel && (
+            <span style={{
+              background:"#F0FAF4", color:"#16A34A",
+              border:"1px solid rgba(22,163,74,0.2)",
+              fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20
+            }}>{roleLabel}</span>
+          )}
           <button onClick={handleLogout} style={{
             display:"flex", alignItems:"center", gap:6,
             border:"1px solid rgba(22,163,74,0.15)",
@@ -91,12 +98,10 @@ export default function Layout() {
 
       </header>
 
-      {/* ── Main ── */}
       <main style={{ flex:1, padding:"36px 40px", background:"#F0FAF4" }}>
         <Outlet />
       </main>
 
-      {/* ── Footer ── */}
       <footer style={{
         background:"#020F07", borderTop:"1px solid rgba(22,163,74,0.1)",
         padding:"16px 40px", textAlign:"center"

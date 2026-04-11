@@ -1,13 +1,40 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import axios from "axios";
 import { api } from "../lib/api";
 import { useAuthStore } from "../store/auth";
+
+const BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
+
+interface TrackStep {
+  type: string; date: string; from: string; to: string;
+  qty: number; txHash: string;
+  conditions?: { temp: number; humidity?: number };
+}
+interface TrackResult {
+  productName: string; gtin: string; lot: string;
+  status: string; expiryDate: string; manufacturer: string;
+  steps: TrackStep[];
+}
+
+const STEP_LABEL: Record<string,string> = {
+  DISTRIBUTE:"Distribuição", RECEIVE:"Recebimento",
+  DISPENSE:"Dispensação", RETURN:"Devolução", MANUFACTURE:"Fabricação"
+};
+const STEP_COLOR: Record<string,string> = {
+  DISTRIBUTE:"#3b82f6", RECEIVE:"#16A34A",
+  DISPENSE:"#f59e0b", RETURN:"#ef4444", MANUFACTURE:"#8b5cf6"
+};
 
 export default function Login() {
   const [cnpj, setCnpj]         = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading]   = useState(false);
+  const [gtin, setGtin]         = useState("");
+  const [tracking, setTracking] = useState(false);
+  const [result, setResult]     = useState<TrackResult|null>(null);
+  const [trackErr, setTrackErr] = useState("");
   const navigate = useNavigate();
   const login    = useAuthStore(s => s.login);
 
@@ -17,8 +44,8 @@ export default function Login() {
     try {
       const { data } = await api.post("/auth/login", { cnpj, password });
       login(data.token, data.role, data.address, data.participantId);
-      navigate("/about");
       toast.success("Bem-vindo ao PharmaChain");
+      navigate("/dashboard");
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? "Erro ao autenticar");
     } finally {
@@ -26,13 +53,27 @@ export default function Login() {
     }
   }
 
-  const G = "#16A34A";
-  const GL = "#DCFCE7";
-  const GD = "#14532D";
-  const BG = "#F0FAF4";
-  const TX = "#0F2417";
+  async function handleTrack(e: React.FormEvent) {
+    e.preventDefault();
+    if (!gtin.trim()) return;
+    setTracking(true); setResult(null); setTrackErr("");
+    try {
+      const { data } = await axios.get(`${BASE}/consumer/track/${gtin.trim()}`);
+      setResult(data);
+    } catch (err: any) {
+      setTrackErr(err.response?.data?.error ?? "Produto não encontrado na blockchain.");
+    } finally {
+      setTracking(false);
+    }
+  }
+
+  const G   = "#16A34A";
+  const GL  = "#DCFCE7";
+  const GD  = "#14532D";
+  const BG  = "#F0FAF4";
+  const TX  = "#0F2417";
   const TX2 = "#4B6B58";
-  const BD = "rgba(22,163,74,0.18)";
+  const BD  = "rgba(22,163,74,0.18)";
 
   return (
     <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", background:BG, minHeight:"100vh" }}>
@@ -49,10 +90,9 @@ export default function Login() {
         .fc:hover { transform:translateY(-3px); box-shadow:0 16px 40px rgba(22,163,74,0.1); }
         .inp { width:100%; padding:12px 16px; border:1.5px solid ${BD}; border-radius:10px; font-size:14px; font-family:'Plus Jakarta Sans',sans-serif; outline:none; transition:border-color .2s,box-shadow .2s; background:${BG}; color:${TX}; }
         .inp:focus { border-color:${G}; background:white; box-shadow:0 0 0 3px rgba(22,163,74,0.1); }
-        .sc { text-align:center; padding:28px 20px; background:white; border-radius:16px; border:1px solid ${BD}; }
       `}</style>
 
-      {/* ── NAVBAR ── */}
+      {/* NAVBAR */}
       <nav style={{
         position:"fixed", top:0, left:0, right:0, zIndex:100,
         background:"rgba(240,250,244,0.96)", backdropFilter:"blur(16px)",
@@ -71,17 +111,17 @@ export default function Login() {
             <Link to="/terms"   className="nk">Termos de Uso</Link>
             <Link to="/privacy" className="nk">Política de Privacidade</Link>
             <Link to="/contact" className="nk">Fale Conosco</Link>
-            <a href="#login" style={{
+            <a href="#rastrear" style={{
               background:"linear-gradient(135deg,#16A34A,#15803D)",
               color:"white", padding:"9px 22px", borderRadius:10, fontSize:13,
               fontWeight:700, textDecoration:"none",
               boxShadow:"0 4px 12px rgba(22,163,74,0.25)"
-            }}>Login</a>
+            }}>Rastrear</a>
           </div>
         </div>
       </nav>
 
-      {/* ── HERO — fundo verde claro, formulário visível imediatamente ── */}
+      {/* HERO */}
       <section style={{
         minHeight:"100vh", background:BG,
         display:"flex", alignItems:"center",
@@ -90,16 +130,7 @@ export default function Login() {
         <div style={{ maxWidth:1080, margin:"0 auto", width:"100%",
           display:"flex", gap:64, alignItems:"center" }}>
 
-          {/* Texto esquerdo */}
           <div style={{ flex:1 }}>
-            <div style={{ display:"inline-flex", alignItems:"center", gap:8,
-              background:GL, border:"1px solid " + BD,
-              borderRadius:20, padding:"6px 16px", marginBottom:24 }}>
-              <div style={{ width:7, height:7, borderRadius:"50%", background:G }}/>
-              <span style={{ color:GD, fontSize:12, fontWeight:600 }}>
-                Rede Blockchain Ativa — Polygon Amoy
-              </span>
-            </div>
             <h1 style={{ color:TX, fontSize:50, fontWeight:800, lineHeight:1.1,
               letterSpacing:"-1.5px", marginBottom:18 }}>
               Rastreabilidade<br/>
@@ -122,18 +153,24 @@ export default function Login() {
                 </div>
               ))}
             </div>
-            <a href="#sobre" style={{
-              display:"inline-block",
-              background:"linear-gradient(135deg,#16A34A,#15803D)",
-              color:"white", padding:"13px 28px", borderRadius:11,
-              fontWeight:700, textDecoration:"none", fontSize:14,
-              boxShadow:"0 6px 20px rgba(22,163,74,0.3)"
-            }}>
-              Conheça o Projeto
-            </a>
+            <div style={{ display:"flex", gap:12 }}>
+              <a href="#sobre" style={{
+                display:"inline-block",
+                background:"linear-gradient(135deg,#16A34A,#15803D)",
+                color:"white", padding:"13px 28px", borderRadius:11,
+                fontWeight:700, textDecoration:"none", fontSize:14,
+                boxShadow:"0 6px 20px rgba(22,163,74,0.3)"
+              }}>Conheça o Projeto</a>
+              <a href="#rastrear" style={{
+                display:"inline-block",
+                background:"white", border:"1.5px solid " + BD,
+                color:GD, padding:"13px 28px", borderRadius:11,
+                fontWeight:700, textDecoration:"none", fontSize:14,
+              }}>📦 Rastrear Medicamento</a>
+            </div>
           </div>
 
-          {/* ── LOGIN CARD — sempre visível ── */}
+          {/* LOGIN CARD */}
           <div id="login" style={{ width:380, flexShrink:0 }}>
             <div style={{
               background:"white", borderRadius:24, padding:40,
@@ -185,7 +222,7 @@ export default function Login() {
         </div>
       </section>
 
-      {/* ── SOBRE ── */}
+      {/* SOBRE */}
       <section id="sobre" className="s" style={{ background:"white" }}>
         <div className="c">
           <div style={{ textAlign:"center", marginBottom:48 }}>
@@ -214,7 +251,7 @@ export default function Login() {
         </div>
       </section>
 
-      {/* ── BLOCKCHAIN ── */}
+      {/* BLOCKCHAIN */}
       <section className="s" style={{ background:BG }}>
         <div className="c">
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:72, alignItems:"center" }}>
@@ -271,7 +308,167 @@ export default function Login() {
         </div>
       </section>
 
-      {/* ── CTA ── */}
+      {/* ── RASTREADOR PÚBLICO ── */}
+      <section id="rastrear" className="s" style={{ background:"white" }}>
+        <div className="c">
+          <div style={{ textAlign:"center", marginBottom:48 }}>
+            <span className="tag">Para o Consumidor</span>
+            <h2 style={{ fontSize:36, fontWeight:800, color:TX, letterSpacing:"-1px", marginBottom:14 }}>
+              Verifique a origem do seu medicamento
+            </h2>
+            <p style={{ color:TX2, fontSize:16, maxWidth:560, margin:"0 auto", lineHeight:1.8 }}>
+              Escaneie o QR Code da embalagem ou digite o código GTIN para consultar
+              todo o histórico de movimentação na blockchain — sem precisar de login.
+            </p>
+          </div>
+
+          {/* Campo de busca */}
+          <div style={{ maxWidth:580, margin:"0 auto 40px" }}>
+            <form onSubmit={handleTrack} style={{ display:"flex", gap:10 }}>
+              <input
+                className="inp"
+                placeholder="Digite o GTIN ou escaneie o QR Code da embalagem"
+                value={gtin}
+                onChange={e => { setGtin(e.target.value); setResult(null); setTrackErr(""); }}
+              />
+              <button type="submit" disabled={tracking} style={{
+                flexShrink:0, padding:"0 24px", height:48,
+                background:"linear-gradient(135deg,#16A34A,#15803D)",
+                color:"white", border:"none", borderRadius:10,
+                fontSize:14, fontWeight:700, cursor: tracking ? "not-allowed" : "pointer",
+                fontFamily:"inherit", opacity: tracking ? .7 : 1,
+                boxShadow:"0 4px 14px rgba(22,163,74,0.3)"
+              }}>
+                {tracking ? "Buscando..." : "Rastrear"}
+              </button>
+            </form>
+            <p style={{ fontSize:11, color:"#94a3b8", marginTop:10, textAlign:"center" }}>
+              O GTIN está impresso na embalagem do medicamento ou no QR Code
+            </p>
+          </div>
+
+          {/* Erro */}
+          {trackErr && (
+            <div style={{ maxWidth:700, margin:"0 auto 24px",
+              background:"#fef2f2", border:"1px solid #fecaca",
+              borderRadius:14, padding:"16px 20px",
+              display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:20 }}>⚠️</span>
+              <p style={{ fontSize:14, color:"#b91c1c" }}>{trackErr}</p>
+            </div>
+          )}
+
+          {/* Resultado */}
+          {result && (
+            <div style={{ maxWidth:700, margin:"0 auto" }}>
+
+              {/* Card do produto */}
+              <div style={{ background:"linear-gradient(135deg,#0F2417,#14532D)",
+                borderRadius:20, padding:28, color:"white", marginBottom:20 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ADE80" }}/>
+                  <span style={{ fontSize:11, color:"#4ADE80", fontWeight:700, letterSpacing:"1px" }}>
+                    REGISTRADO NA BLOCKCHAIN
+                  </span>
+                </div>
+                <h3 style={{ fontSize:22, fontWeight:800, marginBottom:8 }}>{result.productName}</h3>
+                <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>GTIN: <strong style={{ color:"white" }}>{result.gtin}</strong></span>
+                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Lote: <strong style={{ color:"white" }}>{result.lot}</strong></span>
+                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Fabricante: <strong style={{ color:"white" }}>{result.manufacturer}</strong></span>
+                  <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Validade: <strong style={{ color:"white" }}>{new Date(result.expiryDate).toLocaleDateString("pt-BR")}</strong></span>
+                  <span style={{ fontSize:12, padding:"2px 10px", borderRadius:20,
+                    background: result.status === "ACTIVE" ? "rgba(74,222,128,0.2)" : "rgba(239,68,68,0.2)",
+                    color: result.status === "ACTIVE" ? "#4ADE80" : "#fca5a5",
+                    fontWeight:700 }}>
+                    {result.status === "ACTIVE" ? "✓ Ativo" : result.status === "RECALLED" ? "⚠ Recall" : result.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Timeline de steps */}
+              <div style={{ background:"white", borderRadius:16, border:"1px solid " + BD, overflow:"hidden" }}>
+                <div style={{ padding:"18px 24px", borderBottom:"1px solid " + BD, background:BG }}>
+                  <h4 style={{ fontSize:14, fontWeight:700, color:TX }}>
+                    Histórico de Movimentação — {result.steps.length} registro(s)
+                  </h4>
+                </div>
+                {result.steps.length === 0 ? (
+                  <div style={{ padding:32, textAlign:"center", color:TX2, fontSize:14 }}>
+                    Nenhuma movimentação registrada ainda.
+                  </div>
+                ) : (
+                  <div style={{ padding:"8px 0" }}>
+                    {result.steps.map((step, i) => (
+                      <div key={i} style={{
+                        display:"flex", gap:16, padding:"16px 24px",
+                        borderBottom: i < result.steps.length - 1 ? "1px solid #f1f5f9" : "none",
+                        alignItems:"flex-start"
+                      }}>
+                        {/* Indicador de tipo */}
+                        <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                          <div style={{
+                            width:36, height:36, borderRadius:10,
+                            background: (STEP_COLOR[step.type] ?? "#64748b") + "18",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            fontSize:16
+                          }}>
+                            {step.type === "MANUFACTURE" ? "🏭"
+                              : step.type === "DISTRIBUTE" ? "🚚"
+                              : step.type === "RECEIVE"    ? "📥"
+                              : step.type === "DISPENSE"   ? "💊"
+                              : "↩️"}
+                          </div>
+                          {i < result.steps.length - 1 && (
+                            <div style={{ width:2, height:24, background:"#e2e8f0", borderRadius:1 }}/>
+                          )}
+                        </div>
+
+                        {/* Conteúdo */}
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+                            <span style={{
+                              fontSize:11, fontWeight:700, padding:"2px 9px", borderRadius:20,
+                              background: (STEP_COLOR[step.type] ?? "#64748b") + "18",
+                              color: STEP_COLOR[step.type] ?? "#64748b"
+                            }}>
+                              {STEP_LABEL[step.type] ?? step.type}
+                            </span>
+                            <span style={{ fontSize:11, color:"#94a3b8" }}>
+                              {new Date(step.date).toLocaleString("pt-BR")}
+                            </span>
+                          </div>
+                          <p style={{ fontSize:13, color:TX, marginBottom:2 }}>
+                            <strong>{step.from}</strong>
+                            <span style={{ color:TX2 }}> → </span>
+                            <strong>{step.to}</strong>
+                          </p>
+                          <p style={{ fontSize:12, color:TX2 }}>
+                            Quantidade: {step.qty} un.
+                            {step.conditions && ` · Temp: ${step.conditions.temp}°C`}
+                            {step.conditions?.humidity && ` · Umidade: ${step.conditions.humidity}%`}
+                          </p>
+                          {step.txHash && (
+                            <a href={`https://amoy.polygonscan.com/tx/${step.txHash}`}
+                              target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize:11, color:G, textDecoration:"none",
+                                display:"inline-flex", alignItems:"center", gap:4, marginTop:4 }}>
+                              🔗 {step.txHash.slice(0,10)}...{step.txHash.slice(-6)} — ver na blockchain
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* CTA */}
       <section className="s" style={{ background:GL }}>
         <div className="c" style={{ textAlign:"center" }}>
           <span className="tag">Logística Farmacêutica</span>
@@ -294,7 +491,7 @@ export default function Login() {
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
+      {/* FOOTER */}
       <footer style={{ background:"#020F07", padding:"36px 24px" }}>
         <div className="c">
           <div style={{ display:"flex", justifyContent:"space-between",
@@ -310,7 +507,7 @@ export default function Login() {
             </p>
             <div style={{ display:"flex", gap:20 }}>
               <Link to="/terms"   style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Termos de Uso</Link>
-              <Link to="/privacy" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Privacidade</Link>
+              <Link to="/privacy" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Política de Privacidade</Link>
               <Link to="/contact" style={{ color:"#4B6B58", fontSize:12, textDecoration:"none" }}>Contato</Link>
             </div>
           </div>
