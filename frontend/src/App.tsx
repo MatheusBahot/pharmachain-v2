@@ -13,6 +13,7 @@ import Users         from "./pages/Users";
 import Terms         from "./pages/Terms";
 import Privacy       from "./pages/Privacy";
 import Contact       from "./pages/Contact";
+import Track         from "./pages/Track";
 import { useAuthStore } from "./store/auth";
 
 const qc = new QueryClient({
@@ -29,12 +30,13 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login"   element={<Login />} />
-          <Route path="/terms"   element={<Terms />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/contact" element={<Contact />} />
+          <Route path="/login"    element={<Login />} />
+          <Route path="/terms"    element={<Terms />} />
+          <Route path="/privacy"  element={<Privacy />} />
+          <Route path="/contact"  element={<Contact />} />
+          <Route path="/rastrear" element={<Track />} />
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-            <Route index element={<Navigate to="/about" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="about"         element={<About />} />
             <Route path="dashboard"     element={<Dashboard />} />
             <Route path="batches"       element={<Batches />} />
